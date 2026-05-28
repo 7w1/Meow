@@ -99,6 +99,7 @@ func generateMeow(w http.ResponseWriter, r *http.Request) {
 		"generation_time": duration.String(),
 	})
 }
+
 func detectMeow(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
