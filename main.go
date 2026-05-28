@@ -17,6 +17,7 @@ type Config struct {
 	DetectEndpoint    string `json:"detect_endpoint"`
 	AskEndpoint       string `json:"ask_endpoint"`
 	EnableLandingPage bool   `json:"enable_landing_page"`
+	MeowLikeEndpoint  string `json:"meowlike_endpoint"`
 }
 
 func loadConfig() Config {
@@ -25,6 +26,7 @@ func loadConfig() Config {
 		GenerateEndpoint:  "/meow",
 		DetectEndpoint:    "/ismeow",
 		AskEndpoint:       "/askmeow",
+		MeowLikeEndpoint:  "/meowlike",
 		EnableLandingPage: true,
 	}
 
@@ -53,11 +55,13 @@ func main() {
 	http.HandleFunc(cfg.GenerateEndpoint, generateMeow)
 	http.HandleFunc(cfg.DetectEndpoint, detectMeow)
 	http.HandleFunc(cfg.AskEndpoint, askMeow)
+	http.HandleFunc(cfg.MeowLikeEndpoint, detectMeowLike)
 
 	fmt.Printf("MaaS is running on port %s (ฅ'ω'ฅ)\n", cfg.Port)
 	fmt.Printf("    -> Generation: %s\n", cfg.GenerateEndpoint)
 	fmt.Printf("    -> Detection: %s\n", cfg.DetectEndpoint)
 	fmt.Printf("    -> 8-Ball:     %s\n", cfg.AskEndpoint)
+	fmt.Printf("    -> Meow-Like:  %s\n", cfg.MeowLikeEndpoint)
 
 	http.ListenAndServe(":"+cfg.Port, nil)
 }
@@ -161,6 +165,74 @@ func detectMeow(w http.ResponseWriter, r *http.Request) {
 		"input":           text,
 		"squeezed_form":   squeezed,
 		"is_meow":         isMeow,
+		"meow_percentage": percString,
+		"detection_time":  duration.String(),
+	})
+}
+
+func detectMeowLike(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	text := r.URL.Query().Get("text")
+	w.Header().Set("Content-Type", "application/json")
+
+	if text == "" {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide text, e.g. ?text=miao"})
+		return
+	}
+
+	var builder strings.Builder
+	var lastChar rune
+	for _, char := range strings.ToLower(text) {
+		if char >= 'a' && char <= 'z' {
+			if char != lastChar {
+				builder.WriteRune(char)
+				lastChar = char
+			}
+		}
+	}
+	squeezed := builder.String()
+
+	validTransitions := map[string]bool{
+		"me": true, "eo": true, "ow": true, // meow
+		"mi": true, "ia": true, "au": true, "ao": true, // miau / miao
+		"ny": true, "ya": true, "an": true, // nya / nyan
+		"mr": true, "rp": true, // mrrp
+		"pr": true, "ur": true, // purr
+		"ew": true, "aw": true, // trailing sounds
+	}
+
+	score := 0.0
+
+	if len(squeezed) > 1 {
+		matchCount := 0
+		for i := 0; i < len(squeezed)-1; i++ {
+			pair := squeezed[i : i+2]
+			if validTransitions[pair] {
+				matchCount++
+			}
+		}
+
+		score = float64(matchCount) * 20.0
+
+		if score > 100.0 {
+			score = 100.0
+		}
+
+	} else if len(squeezed) == 1 {
+		if strings.Contains("mny", squeezed) {
+			score = 30.0
+		}
+	}
+
+	isMeowLike := score >= 50.0
+	percString := fmt.Sprintf("%.1f%%", score)
+
+	duration := time.Since(start)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"input":           text,
+		"squeezed_form":   squeezed,
+		"is_meow_like":    isMeowLike,
 		"meow_percentage": percString,
 		"detection_time":  duration.String(),
 	})

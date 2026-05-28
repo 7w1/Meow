@@ -3,5 +3,6 @@
     "generate_endpoint": "/meow",
     "detect_endpoint": "/ismeow",
     "ask_endpoint": "/askmeow",
+    "meowlike_endpoint": "/meowlike",
     "enable_landing_page": true
 }
