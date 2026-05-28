@@ -84,8 +84,8 @@ class Meow(Plugin):
         localpart, _ = self.client.parse_user_id(self.client.mxid)
 
         is_pinged = False
-        mentions_data = evt.content.get("m.mentions")
-        if mentions_data:
+        if "m.mentions" in evt.content:
+            mentions_data = evt.content.get("m.mentions") or {}
             user_ids = (
                 mentions_data.get("user_ids")
                 if isinstance(mentions_data, dict)
@@ -93,7 +93,7 @@ class Meow(Plugin):
             )
             if user_ids and self.client.mxid in user_ids:
                 is_pinged = True
-        elif self.client.mxid in body or f"@{localpart}" in body or localpart in body:
+        elif self.client.mxid in body or f"@{localpart}" in body:
             is_pinged = True
 
         if is_pinged:
