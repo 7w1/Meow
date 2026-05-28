@@ -321,6 +321,10 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
             <code>GET <a href="/ismeow?text=mrrp">/ismeow?text={input}</a></code><br><br>
             Returns phonetic trait-analysis confidence score.
         </li>
+		<li>
+            <code>GET <a href="/meowlike?text=miao">/meowlike?text={input}</a></code><br><br>
+            Returns phonetic trait-analysis confidence score for meow-like vocalizations.
+        </li>
         <li>
             <code>GET <a href="/askmeow?text=hello">/askmeow?text={question}</a></code><br><br>
             Returns a deterministic response based on the input question.
