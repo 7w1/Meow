@@ -358,6 +358,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     <p>contribute: <a href="https://github.com/7w1/Meow">github.com/7w1/Meow</a></p>
     <br>
     <h3>Endpoints</h3>
+	<p>There is a per-ip rate limit of 100 requests per 10 seconds.</p>
     <ul>
         <li>
             <code>GET <a href="/meow">/meow</a></code><br><br>
