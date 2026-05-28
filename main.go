@@ -133,6 +133,22 @@ var meowLikeTransitions = map[string]bool{
 	"ew": true, "aw": true, // trailing sounds
 }
 
+var meowLikeTokens = []string{
+	"miao", "meow", "mrrp", "mrp", "mrow", "mrrow", "nya", "nyan",
+	"purr", "prrr", "mew", "rawr",
+}
+
+const meowLikeThreshold = 40.0
+
+func meowTokenBoost(squeezed string) float64 {
+	for _, tok := range meowLikeTokens {
+		if strings.Contains(squeezed, tok) {
+			return 25.0
+		}
+	}
+	return 0.0
+}
+
 func scoreMeowLike(squeezed string, letterCount int) float64 {
 	if len(squeezed) == 0 {
 		return 0
@@ -154,8 +170,8 @@ func scoreMeowLike(squeezed string, letterCount int) float64 {
 
 	density := float64(matchCount) / float64(totalPairs)
 
-	const softSqueezedLen = 10
-	const hardSqueezedLen = 22
+	const softSqueezedLen = 14
+	const hardSqueezedLen = 28
 	lengthFactor := 1.0
 	if len(squeezed) > softSqueezedLen {
 		lengthFactor = 1.0 - float64(len(squeezed)-softSqueezedLen)/float64(hardSqueezedLen-softSqueezedLen)
@@ -164,8 +180,8 @@ func scoreMeowLike(squeezed string, letterCount int) float64 {
 		}
 	}
 
-	const softLetterCount = 14
-	const hardLetterCount = 40
+	const softLetterCount = 20
+	const hardLetterCount = 55
 	inputFactor := 1.0
 	if letterCount > softLetterCount {
 		inputFactor = 1.0 - float64(letterCount-softLetterCount)/float64(hardLetterCount-softLetterCount)
@@ -174,7 +190,7 @@ func scoreMeowLike(squeezed string, letterCount int) float64 {
 		}
 	}
 
-	score := density * 100.0 * lengthFactor * inputFactor
+	score := density*100.0*lengthFactor*inputFactor + meowTokenBoost(squeezed)
 	if score > 100 {
 		score = 100
 	}
@@ -256,7 +272,7 @@ func detectMeowLike(w http.ResponseWriter, r *http.Request) {
 	squeezed := squeezeLetters(text)
 	letterCount := countLetters(text)
 	score := scoreMeowLike(squeezed, letterCount)
-	isMeowLike := score >= 50.0
+	isMeowLike := score >= meowLikeThreshold
 	percString := fmt.Sprintf("%.1f%%", score)
 
 	duration := time.Since(start)
