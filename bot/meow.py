@@ -59,9 +59,9 @@ class Meow(Plugin):
 
             if normalized_text == "help":
                 help_text = (
-                    "**Meow Help**\n"
-                    "- Ping me without text to generate a meow.\n"
-                    "- Ping me with text (or replying to a message) to analyze if it's a meow.\n"
+                    "Meow Help:\n"
+                    "- Ping to generate a meow.\n"
+                    "- Ping with text (or replying to a message) for meownalysis.\n"
                 )
                 content = TextMessageEventContent(msgtype=MessageType.TEXT, body=help_text)
                 
