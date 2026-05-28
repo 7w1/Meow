@@ -42,20 +42,38 @@ class Meow(Plugin):
         data = await self._maas_get_json(maas_url, "/ismeow", {"text": text})
         return bool(data.get("is_meow"))
 
-    async def _detect_8ball(self, maas_url: str, ping_text: str) -> bool:
+    async def _parse_meow_ball(
+        self,
+        maas_url: str,
+        ping_text: str,
+        is_reply: bool,
+        parent_text: str,
+    ) -> str | None:
         stripped = ping_text.strip()
+
+        if is_reply:
+            if not parent_text:
+                return None
+            if MEOW_BALL_SUFFIX.search(stripped):
+                return parent_text
+            if stripped.endswith("?"):
+                candidate = stripped[:-1].strip()
+                if candidate and await self._is_meow(maas_url, candidate):
+                    return parent_text
+            return None
+
         match = MEOW_BALL_SUFFIX.search(stripped)
         if match:
             prefix = stripped[: match.start()].strip().rstrip("?").strip()
-            if not prefix:
-                return True
-            return await self._is_meow(maas_url, prefix)
+            if prefix:
+                return prefix
+            return None
 
         if stripped.endswith("?"):
             candidate = stripped[:-1].strip()
-            if candidate:
-                return await self._is_meow(maas_url, candidate)
-        return False
+            if candidate and await self._is_meow(maas_url, candidate):
+                return candidate
+        return None
 
     async def _reply_maas_outage(
         self,
@@ -130,8 +148,8 @@ class Meow(Plugin):
                     "Meow Help:\n"
                     "- Ping to generate a meow.\n"
                     "- Ping with text (or reply to a message) for a meownalysis.\n"
-                    "- Ping with a reply and a meow and a question mark (e.g., mrrp?) to consult the Meow-Ball.\n"
-                    "- Ping with a meow and a fact-check phrase (e.g., mrrp is this true?, mrrp fact check?, mrrp is that correct?) to consult the Meow-Ball.\n"
+                    "- Ping with a fact-check phrase to consult the Meow-Ball (e.g., mrrp is this true?, or \"the sky is green @meow is this true?\").\n"
+                    "- Ping and reply to a message with a fact-check phrase or meow? to consult the Meow-Ball on that message.\n"
                 )
                 content = TextMessageEventContent(msgtype=MessageType.TEXT, body=help_text)
                 content.set_reply(orig_evt if (is_reply and orig_evt) else evt)
@@ -139,9 +157,14 @@ class Meow(Plugin):
                 return
 
             try:
-                if await self._detect_8ball(maas_url, ping_text):
-                    target_text = parent_text if is_reply else ping_text
-                    ask_payload = f"{target_text} [{evt.sender}]"
+                target_text = await self._parse_meow_ball(
+                    maas_url, ping_text, is_reply, parent_text
+                )
+                if target_text is not None:
+                    analyzed_sender = (
+                        orig_evt.sender if (is_reply and orig_evt) else evt.sender
+                    )
+                    ask_payload = f"{target_text} [{analyzed_sender}]"
 
                     data = await self._maas_get_json(
                         maas_url, "/askmeow", {"text": ask_payload}
