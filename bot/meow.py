@@ -7,7 +7,14 @@ from maubot import Plugin, MessageEvent
 from maubot.handlers import event
 
 MAAS_OUTAGE_MSG = "MaaS is unavailable right now. Try again later."
-IS_THIS_TRUE_SUFFIX = re.compile(r"is\s*this\s*true\W*$", re.IGNORECASE)
+MEOW_BALL_SUFFIX = re.compile(
+    r"(?:"
+    r"is\s*(?:this|that)\s*(?:true|correct|accurate|real|right|valid)"
+    r"|fact[\s-]*check(?:\s*(?:this|that))?"
+    r"|check\s*(?:the\s*)?facts?"
+    r")\W*$",
+    re.IGNORECASE,
+)
 
 
 class Config(BaseProxyConfig):
@@ -37,7 +44,7 @@ class Meow(Plugin):
 
     async def _detect_8ball(self, maas_url: str, ping_text: str) -> bool:
         stripped = ping_text.strip()
-        match = IS_THIS_TRUE_SUFFIX.search(stripped)
+        match = MEOW_BALL_SUFFIX.search(stripped)
         if match:
             prefix = stripped[: match.start()].strip().rstrip("?").strip()
             if not prefix:
@@ -124,7 +131,7 @@ class Meow(Plugin):
                     "- Ping to generate a meow.\n"
                     "- Ping with text (or reply to a message) for a meownalysis.\n"
                     "- Ping with a reply and a meow and a question mark (e.g., mrrp?) to consult the Meow-Ball.\n"
-                    "- Ping with a meow and \"is this true?\" (e.g., mrrp is this true?) to consult the Meow-Ball.\n"
+                    "- Ping with a meow and a fact-check phrase (e.g., mrrp is this true?, mrrp fact check?, mrrp is that correct?) to consult the Meow-Ball.\n"
                 )
                 content = TextMessageEventContent(msgtype=MessageType.TEXT, body=help_text)
                 content.set_reply(orig_evt if (is_reply and orig_evt) else evt)
