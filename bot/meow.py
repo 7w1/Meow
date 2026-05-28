@@ -139,7 +139,7 @@ class Meow(Plugin):
                     data = await self._maas_get_json(
                         maas_url, "/askmeow", {"text": ask_payload}
                     )
-                    response_text = f"🎱 {data['answer']}"
+                    response_text = f"{data['answer']}"
 
                     content = TextMessageEventContent(
                         msgtype=MessageType.TEXT, body=response_text
