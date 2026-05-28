@@ -7,12 +7,12 @@ from maubot import Plugin, MessageEvent
 from maubot.handlers import event
 
 MAAS_OUTAGE_MSG = "MaaS is unavailable right now. Try again later."
-MEOW_BALL_SUFFIX = re.compile(
+MEOW_BALL_PHRASE = re.compile(
     r"(?:"
     r"is\s*(?:this|that)\s*(?:true|correct|accurate|real|right|valid)"
     r"|fact[\s-]*check(?:\s*(?:this|that))?"
     r"|check\s*(?:the\s*)?facts?"
-    r")\W*$",
+    r")",
     re.IGNORECASE,
 )
 
@@ -42,6 +42,22 @@ class Meow(Plugin):
         data = await self._maas_get_json(maas_url, "/ismeow", {"text": text})
         return bool(data.get("is_meow"))
 
+    def _extract_phrase_subject(self, stripped: str) -> str | None:
+        match = MEOW_BALL_PHRASE.search(stripped)
+        if not match:
+            return None
+
+        before = stripped[: match.start()].strip().rstrip("?").strip()
+        after = stripped[match.end() :].strip().lstrip(":?. ").strip().rstrip("?").strip()
+
+        if before and after:
+            return before if len(before) >= len(after) else after
+        if before:
+            return before
+        if after:
+            return after
+        return ""
+
     async def _parse_meow_ball(
         self,
         maas_url: str,
@@ -51,27 +67,19 @@ class Meow(Plugin):
     ) -> str | None:
         stripped = ping_text.strip()
 
-        if is_reply:
-            if not parent_text:
-                return None
-            if MEOW_BALL_SUFFIX.search(stripped):
-                return parent_text
-            if stripped.endswith("?"):
-                candidate = stripped[:-1].strip()
-                if candidate and await self._is_meow(maas_url, candidate):
-                    return parent_text
-            return None
-
-        match = MEOW_BALL_SUFFIX.search(stripped)
-        if match:
-            prefix = stripped[: match.start()].strip().rstrip("?").strip()
-            if prefix:
-                return prefix
-            return None
+        phrase_subject = self._extract_phrase_subject(stripped)
+        if phrase_subject is not None:
+            if is_reply:
+                if not parent_text:
+                    return None
+                return phrase_subject if phrase_subject else parent_text
+            return phrase_subject if phrase_subject else None
 
         if stripped.endswith("?"):
             candidate = stripped[:-1].strip()
             if candidate and await self._is_meow(maas_url, candidate):
+                if is_reply:
+                    return parent_text if parent_text else None
                 return candidate
         return None
 
@@ -148,8 +156,8 @@ class Meow(Plugin):
                     "Meow Help:\n"
                     "- Ping to generate a meow.\n"
                     "- Ping with text (or reply to a message) for a meownalysis.\n"
-                    "- Ping with a fact-check phrase to consult the Meow-Ball (e.g., mrrp is this true?, or \"the sky is green @meow is this true?\").\n"
-                    "- Ping and reply to a message with a fact-check phrase or meow? to consult the Meow-Ball on that message.\n"
+                    "- Ping with a fact-check phrase anywhere in the message to consult the Meow-Ball (e.g., \"@meow is this true: the sky is green\", \"the sky is green @meow fact check\").\n"
+                    "- Ping and reply with a fact-check phrase or meow? to consult the Meow-Ball on the replied-to message.\n"
                 )
                 content = TextMessageEventContent(msgtype=MessageType.TEXT, body=help_text)
                 content.set_reply(orig_evt if (is_reply and orig_evt) else evt)
