@@ -2,6 +2,8 @@
 
 A low-latency API built in Go for generating and detecting feline vocalizations. The application is designed for high throughput and minimal system footprint, deployed as a statically linked binary within a scratch Docker container.
 
+Website: [meow.plz.pet](https://meow.plz.pet)
+
 ## API Endpoints
 
 ### 1. Generate 

@@ -11,16 +11,18 @@ import (
 )
 
 type Config struct {
-	Port             string `json:"port"`
-	GenerateEndpoint string `json:"generate_endpoint"`
-	DetectEndpoint   string `json:"detect_endpoint"`
+	Port              string `json:"port"`
+	GenerateEndpoint  string `json:"generate_endpoint"`
+	DetectEndpoint    string `json:"detect_endpoint"`
+	EnableLandingPage bool   `json:"enable_landing_page"`
 }
 
 func loadConfig() Config {
 	cfg := Config{
-		Port:             "8000",
-		GenerateEndpoint: "/meow",
-		DetectEndpoint:   "/ismeow",
+		Port:              "8000",
+		GenerateEndpoint:  "/meow",
+		DetectEndpoint:    "/ismeow",
+		EnableLandingPage: true,
 	}
 
 	file, err := os.Open("config.json")
@@ -37,6 +39,13 @@ func loadConfig() Config {
 
 func main() {
 	cfg := loadConfig()
+
+	if cfg.EnableLandingPage {
+		http.HandleFunc("/", rootHandler)
+		fmt.Println("   -> Landing Page:   Enabled")
+	} else {
+		fmt.Println("   -> Landing Page:   Disabled")
+	}
 
 	http.HandleFunc(cfg.GenerateEndpoint, generateMeow)
 	http.HandleFunc(cfg.DetectEndpoint, detectMeow)
@@ -151,4 +160,46 @@ func detectMeow(w http.ResponseWriter, r *http.Request) {
 		"meow_percentage": percString,
 		"detection_time":  duration.String(),
 	})
+}
+
+func rootHandler(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	html := `<!DOCTYPE html>
+<html>
+<head>
+    <title>MaaS API</title>
+    <style>
+        body { font-family: monospace; background: #111; color: #eee; padding: 2rem; max-width: 600px; margin: auto; }
+        a { color: #ffd1dc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        ul { list-style-type: none; padding-left: 0; }
+        li { margin-bottom: 1rem; background: #222; padding: 1rem; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <p>meow.</p>
+    <p>contribute: <a href="https://github.com/7w1/Meow">github.com/7w1/Meow</a></p>
+    <br>
+    <h3>Endpoints</h3>
+    <ul>
+        <li>
+            <code>GET <a href="/meow">/meow</a></code><br><br>
+            Returns a procedurally generated vocalization.
+        </li>
+        <li>
+            <code>GET <a href="/ismeow?text=mrrp">/ismeow?text={input}</a></code><br><br>
+            Returns phonetic trait-analysis confidence score.
+        </li>
+    </ul>
+    <br>
+    <p>Made by 7w1</p>
+</body>
+</html>`
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(html))
 }
