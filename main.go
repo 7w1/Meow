@@ -100,6 +100,87 @@ func generateMeow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func squeezeLetters(text string) string {
+	var builder strings.Builder
+	var lastChar rune
+	for _, char := range strings.ToLower(text) {
+		if char >= 'a' && char <= 'z' {
+			if char != lastChar {
+				builder.WriteRune(char)
+				lastChar = char
+			}
+		}
+	}
+	return builder.String()
+}
+
+func countLetters(text string) int {
+	n := 0
+	for _, char := range strings.ToLower(text) {
+		if char >= 'a' && char <= 'z' {
+			n++
+		}
+	}
+	return n
+}
+
+var meowLikeTransitions = map[string]bool{
+	"me": true, "eo": true, "ow": true, // meow
+	"mi": true, "ia": true, "au": true, "ao": true, // miau / miao
+	"ny": true, "ya": true, "an": true, // nya / nyan
+	"mr": true, "rp": true, // mrrp
+	"pr": true, "ur": true, // purr
+	"ew": true, "aw": true, // trailing sounds
+}
+
+func scoreMeowLike(squeezed string, letterCount int) float64 {
+	if len(squeezed) == 0 {
+		return 0
+	}
+	if len(squeezed) == 1 {
+		if strings.ContainsAny(squeezed, "mny") {
+			return 30
+		}
+		return 0
+	}
+
+	totalPairs := len(squeezed) - 1
+	matchCount := 0
+	for i := 0; i < totalPairs; i++ {
+		if meowLikeTransitions[squeezed[i:i+2]] {
+			matchCount++
+		}
+	}
+
+	density := float64(matchCount) / float64(totalPairs)
+
+	const softSqueezedLen = 10
+	const hardSqueezedLen = 22
+	lengthFactor := 1.0
+	if len(squeezed) > softSqueezedLen {
+		lengthFactor = 1.0 - float64(len(squeezed)-softSqueezedLen)/float64(hardSqueezedLen-softSqueezedLen)
+		if lengthFactor < 0 {
+			lengthFactor = 0
+		}
+	}
+
+	const softLetterCount = 14
+	const hardLetterCount = 40
+	inputFactor := 1.0
+	if letterCount > softLetterCount {
+		inputFactor = 1.0 - float64(letterCount-softLetterCount)/float64(hardLetterCount-softLetterCount)
+		if inputFactor < 0 {
+			inputFactor = 0
+		}
+	}
+
+	score := density * 100.0 * lengthFactor * inputFactor
+	if score > 100 {
+		score = 100
+	}
+	return score
+}
+
 func detectMeow(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -111,17 +192,7 @@ func detectMeow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var builder strings.Builder
-	var lastChar rune
-	for _, char := range strings.ToLower(text) {
-		if char >= 'a' && char <= 'z' {
-			if char != lastChar {
-				builder.WriteRune(char)
-				lastChar = char
-			}
-		}
-	}
-	squeezed := builder.String()
+	squeezed := squeezeLetters(text)
 
 	score := 0.0
 
@@ -182,50 +253,9 @@ func detectMeowLike(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var builder strings.Builder
-	var lastChar rune
-	for _, char := range strings.ToLower(text) {
-		if char >= 'a' && char <= 'z' {
-			if char != lastChar {
-				builder.WriteRune(char)
-				lastChar = char
-			}
-		}
-	}
-	squeezed := builder.String()
-
-	validTransitions := map[string]bool{
-		"me": true, "eo": true, "ow": true, // meow
-		"mi": true, "ia": true, "au": true, "ao": true, // miau / miao
-		"ny": true, "ya": true, "an": true, // nya / nyan
-		"mr": true, "rp": true, // mrrp
-		"pr": true, "ur": true, // purr
-		"ew": true, "aw": true, // trailing sounds
-	}
-
-	score := 0.0
-
-	if len(squeezed) > 1 {
-		matchCount := 0
-		for i := 0; i < len(squeezed)-1; i++ {
-			pair := squeezed[i : i+2]
-			if validTransitions[pair] {
-				matchCount++
-			}
-		}
-
-		score = float64(matchCount) * 20.0
-
-		if score > 100.0 {
-			score = 100.0
-		}
-
-	} else if len(squeezed) == 1 {
-		if strings.Contains("mny", squeezed) {
-			score = 30.0
-		}
-	}
-
+	squeezed := squeezeLetters(text)
+	letterCount := countLetters(text)
+	score := scoreMeowLike(squeezed, letterCount)
 	isMeowLike := score >= 50.0
 	percString := fmt.Sprintf("%.1f%%", score)
 
