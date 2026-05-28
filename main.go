@@ -138,6 +138,113 @@ var meowLikeTokens = []string{
 	"purr", "prrr", "mew", "rawr",
 }
 
+var askMeowAnswers = []string{
+	// Strong yes
+	"It is certain meow.",
+	"It is decidedly meow.",
+	"Without a meow.",
+	"Yes - definitely meow.",
+	"You may rely on meow.",
+	"As I see it, meow.",
+	"Most likely meow.",
+	"Outlook good, meow.",
+	"Yes, meow.",
+	"Signs point to meow.",
+	"Absolutely meow.",
+	"All signs say meow.",
+	"The whiskers agree: meow.",
+	"Paws down, meow.",
+	"Certified meow.",
+	"Meow confirmed.",
+	"The council of cats has spoken: meow.",
+	"That's a meow from me.",
+	"Meow beyond reasonable doubt.",
+	"Verdict: meow.",
+	// Leaning yes
+	"Probably meow.",
+	"Looks meow to me.",
+	"I'd bet a treat on meow.",
+	"The tail twitch says meow.",
+	"Meow-ish, in a good way.",
+	"Favorable meow conditions.",
+	"Meow with reservations, but still meow.",
+	"Soft yes, loud meow.",
+	"The sunbeam approves: meow.",
+	"Meow pending, but likely.",
+	// Uncertain / try again
+	"Reply hazy, try meowing again.",
+	"Ask again later, meow.",
+	"Better not tell you meow.",
+	"Cannot predict meow.",
+	"Concentrate and ask meow.",
+	"The litter box is unclear.",
+	"Meow lost in translation.",
+	"Schrodinger's meow: both meow and not meow.",
+	"Flip a cat coin and meow again.",
+	"The cat walked across the keyboard. Ask later.",
+	"Insufficient treats for a clear meow.",
+	"Meow signal weak. Move closer to the food bowl.",
+	"Nap first, meow later.",
+	"The yarn ball says: unclear.",
+	"Meow static on the line.",
+	"Ask after the zoomies.",
+	"Results may vary by cat mood.",
+	"Meow is loading...",
+	"The window stare continues. No answer yet.",
+	// Strong no
+	"Don't count on meow.",
+	"My reply is no meow.",
+	"My sources say no meow.",
+	"Outlook not so meow.",
+	"Very doubtful meow.",
+	"Hard no meow.",
+	"Not meow. Not even a little.",
+	"The claws say no meow.",
+	"Meow denied.",
+	"Negative meow.",
+	"That's a hiss, not a meow.",
+	"Meow vetoed.",
+	"The empty bowl disagrees: not meow.",
+	"Unlikely meow.",
+	"Meow? In this economy?",
+	// Leaning no
+	"Probably not meow.",
+	"Unlikely, but admire the audacity.",
+	"Meow doubtful.",
+	"The tail is low on this one.",
+	"Not looking meow.",
+	"Meow forecast: cloudy with a chance of no.",
+	// Playful / thematic
+	"Have you tried meowing at it?",
+	"Meow is a state of mind.",
+	"Only on Tuesdays that land on a meow.",
+	"Ask the cat on the fridge.",
+	"Meow once for yes, twice for also yes.",
+	"The red dot knows, but won't tell.",
+	"Meow is always the answer. This question is the exception.",
+	"Purr harder.",
+	"Meow responsibly.",
+	"According to ancient cat law: meow.",
+	"Meow detected, but at what cost?",
+	"That's between you and the sunbeam.",
+	"Meow in the streets, mrrp in the sheets.",
+	"Error 404: meow not found.",
+	"The cardboard box has no comment.",
+	"Meow loudly and carry a small fish.",
+	"Yes, but make it fashion. Meow.",
+	"No, but have you considered a nap?",
+	"Meow is not a number. Wait, yes it is.",
+	"The cat distribution system has allocated: meow.",
+	"Meow approved by 9 out of 10 cats. The tenth is asleep.",
+	"Biologically speaking, meow.",
+	"Philosophically, what is meow?",
+	"Legally distinct from meow, but spiritually meow.",
+	"Meow, but whisper it.",
+	"MEOW.",
+	"The prophecy foretold meow.",
+	"Ask not whether it is meow, but whether you are worthy of meow.",
+}
+
 const meowLikeThreshold = 40.0
 
 func meowTokenBoost(squeezed string) float64 {
@@ -296,36 +403,13 @@ func askMeow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	answers := []string{
-		"It is certain meow.",
-		"It is decidedly meow.",
-		"Without a meow.",
-		"Yes - definitely meow.",
-		"You may rely on meow.",
-		"As I see it, meow.",
-		"Most likely meow.",
-		"Outlook good, meow.",
-		"Yes, meow.",
-		"Signs point to meow.",
-		"Reply hazy, try meowing again.",
-		"Ask again later, meow.",
-		"Better not tell you meow.",
-		"Cannot predict meow.",
-		"Concentrate and ask meow.",
-		"Don't count on meow.",
-		"My reply is no meow.",
-		"My sources say no meow.",
-		"Outlook not so meow.",
-		"Very doubtful meow.",
-	}
-
 	cleanText := strings.ToLower(strings.TrimSpace(text))
 
 	h := fnv.New32a()
 	h.Write([]byte(cleanText))
 	hashValue := h.Sum32()
 
-	answer := answers[hashValue%uint32(len(answers))]
+	answer := askMeowAnswers[hashValue%uint32(len(askMeowAnswers))]
 
 	duration := time.Since(start)
 	json.NewEncoder(w).Encode(map[string]interface{}{
