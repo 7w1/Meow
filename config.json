@@ -2,5 +2,6 @@
     "port": "8000",
     "generate_endpoint": "/meow",
     "detect_endpoint": "/ismeow",
+    "ask_endpoint": "/askmeow",
     "enable_landing_page": true
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math/rand"
 	"net/http"
 	"os"
@@ -14,6 +15,7 @@ type Config struct {
 	Port              string `json:"port"`
 	GenerateEndpoint  string `json:"generate_endpoint"`
 	DetectEndpoint    string `json:"detect_endpoint"`
+	AskEndpoint       string `json:"ask_endpoint"`
 	EnableLandingPage bool   `json:"enable_landing_page"`
 }
 
@@ -22,6 +24,7 @@ func loadConfig() Config {
 		Port:              "8000",
 		GenerateEndpoint:  "/meow",
 		DetectEndpoint:    "/ismeow",
+		AskEndpoint:       "/askmeow",
 		EnableLandingPage: true,
 	}
 
@@ -49,10 +52,12 @@ func main() {
 
 	http.HandleFunc(cfg.GenerateEndpoint, generateMeow)
 	http.HandleFunc(cfg.DetectEndpoint, detectMeow)
+	http.HandleFunc(cfg.AskEndpoint, askMeow)
 
 	fmt.Printf("MaaS is running on port %s (ฅ'ω'ฅ)\n", cfg.Port)
 	fmt.Printf("    -> Generation: %s\n", cfg.GenerateEndpoint)
 	fmt.Printf("    -> Detection: %s\n", cfg.DetectEndpoint)
+	fmt.Printf("    -> 8-Ball:     %s\n", cfg.AskEndpoint)
 
 	http.ListenAndServe(":"+cfg.Port, nil)
 }
@@ -90,7 +95,6 @@ func generateMeow(w http.ResponseWriter, r *http.Request) {
 		"generation_time": duration.String(),
 	})
 }
-
 func detectMeow(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -102,14 +106,14 @@ func detectMeow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	textClean := strings.ToLower(strings.TrimSpace(text))
-
 	var builder strings.Builder
 	var lastChar rune
-	for _, char := range textClean {
-		if char != lastChar {
-			builder.WriteRune(char)
-			lastChar = char
+	for _, char := range strings.ToLower(text) {
+		if char >= 'a' && char <= 'z' {
+			if char != lastChar {
+				builder.WriteRune(char)
+				lastChar = char
+			}
 		}
 	}
 	squeezed := builder.String()
@@ -162,6 +166,56 @@ func detectMeow(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func askMeow(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
+
+	text := r.URL.Query().Get("text")
+	w.Header().Set("Content-Type", "application/json")
+
+	if text == "" {
+		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide a question, e.g. ?text=is it time for food"})
+		return
+	}
+
+	answers := []string{
+		"It is certain meow.",
+		"It is decidedly meow.",
+		"Without a meow.",
+		"Yes - definitely meow.",
+		"You may rely on meow.",
+		"As I see it, meow.",
+		"Most likely meow.",
+		"Outlook good, meow.",
+		"Yes, meow.",
+		"Signs point to meow.",
+		"Reply hazy, try meowing again.",
+		"Ask again later, meow.",
+		"Better not tell you meow.",
+		"Cannot predict meow.",
+		"Concentrate and ask meow.",
+		"Don't count on meow.",
+		"My reply is no meow.",
+		"My sources say no meow.",
+		"Outlook not so meow.",
+		"Very doubtful meow.",
+	}
+
+	cleanText := strings.ToLower(strings.TrimSpace(text))
+
+	h := fnv.New32a()
+	h.Write([]byte(cleanText))
+	hashValue := h.Sum32()
+
+	answer := answers[hashValue%uint32(len(answers))]
+
+	duration := time.Since(start)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"question":     text,
+		"answer":       answer,
+		"latency_time": duration.String(),
+	})
+}
+
 func rootHandler(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -193,6 +247,10 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
         <li>
             <code>GET <a href="/ismeow?text=mrrp">/ismeow?text={input}</a></code><br><br>
             Returns phonetic trait-analysis confidence score.
+        </li>
+        <li>
+            <code>GET <a href="/askmeow?text=hello">/askmeow?text={question}</a></code><br><br>
+            Returns a deterministic response based on the input question.
         </li>
     </ul>
     <br>
