@@ -7,11 +7,19 @@ from maubot import Plugin, MessageEvent
 from maubot.handlers import event
 
 MAAS_OUTAGE_MSG = "MaaS is unavailable right now. Try again later."
+_VERDICT = r"(?:true|correct|accurate|real|right|valid)"
+_POINTER = r"(?:this|that)"
 MEOW_BALL_PHRASE = re.compile(
     r"(?:"
-    r"is\s*(?:this|that)\s*(?:true|correct|accurate|real|right|valid)"
+    rf"is\s*{_POINTER}\s*{_VERDICT}"
     r"|fact[\s-]*check(?:\s*(?:this|that))?"
     r"|check\s*(?:the\s*)?facts?"
+    rf"^is\s+{_POINTER}\b\s*[:.]?\s*"
+    rf"|(?:^|\s)is\s+{_POINTER}\b\s*\??\s*$"
+    rf"|^{_POINTER}\s+{_VERDICT}\b\s*[:.]?\s*"
+    rf"|(?:^|\s){_POINTER}\s+{_VERDICT}\b\s*\??\s*$"
+    rf"|^{_VERDICT}\b\s*[:.]?\s*"
+    rf"|(?:^|\s){_VERDICT}\b\s*\??\s*$"
     r")",
     re.IGNORECASE,
 )
@@ -156,7 +164,7 @@ class Meow(Plugin):
                     "Meow Help:\n"
                     "- Ping to generate a meow.\n"
                     "- Ping with text (or reply to a message) for a meownalysis.\n"
-                    "- Ping with a fact-check phrase anywhere in the message to consult the Meow-Ball (e.g., \"@meow is this true: the sky is green\", \"the sky is green @meow fact check\").\n"
+                    "- Ping with a fact-check phrase anywhere in the message to consult the Meow-Ball (e.g., \"@meow is this true: ...\", \"... @meow correct?\", \"@meow fact check: ...\").\n"
                     "- Ping and reply with a fact-check phrase or meow? to consult the Meow-Ball on the replied-to message.\n"
                 )
                 content = TextMessageEventContent(msgtype=MessageType.TEXT, body=help_text)
