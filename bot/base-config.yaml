@@ -1,0 +1,4 @@
+maas_url: "http://maas-app:8000"
+target_rooms:
+  - "!your_first_room_id"
+  - "!your_second_room_id"

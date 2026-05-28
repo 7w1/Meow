@@ -1,0 +1,41 @@
+name: Deploy Meow
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'bot/**'
+
+jobs:
+  deploy-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Maubot Plugin Archive
+        run: |
+          cd bot
+          zip -j meow.mbp meow.py base-config.yaml maubot.yaml
+
+      - name: Secure Copy (SCP) Plugin to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "bot/meow.mbp"
+          target: "/tmp"
+          strip_components: 1
+
+      - name: Hot-Reload Maubot via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            docker cp /tmp/meow.mbp maubot:/tmp/meow.mbp
+            docker exec maubot mbc upload /tmp/meow.mbp
+            rm /tmp/meow.mbp

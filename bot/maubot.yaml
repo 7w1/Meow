@@ -1,0 +1,6 @@
+id: pet.plz.meow
+version: 1.0.0
+license: AGPL-3.0
+modules:
+  - meow
+main_class: Meow
