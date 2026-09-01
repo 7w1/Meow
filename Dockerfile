@@ -1,9 +1,9 @@
 FROM golang:1.26.3-alpine3.23 AS builder
 WORKDIR /app
-COPY main.go .
+COPY go.mod main.go vocalization.go ./
 
 # Compile a statically linked binary (CGO_ENABLED=0 ensures no external C libraries are needed)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o maas main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o maas .
 
 FROM scratch
 COPY --from=builder /app/maas /maas
