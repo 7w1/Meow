@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"math/rand"
 	"net/http"
 	"os"
 	"strings"
@@ -64,78 +63,6 @@ func main() {
 	fmt.Printf("    -> Meow-Like:  %s\n", cfg.MeowLikeEndpoint)
 
 	http.ListenAndServe(":"+cfg.Port, nil)
-}
-
-func generateMeow(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	heads := []string{"m", "n", "p", "mr", "pr", "ny"}
-	cores := []string{"e", "eo", "a", "ow", "aw", "u", "ya", "io", "ew"}
-	tails := []string{"w", "p", "m", "rp", ""}
-
-	head := heads[rand.Intn(len(heads))]
-	core := cores[rand.Intn(len(cores))]
-	tail := tails[rand.Intn(len(tails))]
-
-	stretch := func(s string, chance float32, maxStretch int) string {
-		if rand.Float32() < chance && len(s) > 0 {
-			charToStretch := string(s[len(s)-1])
-			repeats := rand.Intn(maxStretch) + 1
-			s += strings.Repeat(charToStretch, repeats)
-		}
-		return s
-	}
-
-	head = stretch(head, 0.4, 4)
-	core = stretch(core, 0.8, 6)
-	tail = stretch(tail, 0.5, 4)
-
-	finalMeow := head + core + tail
-
-	duration := time.Since(start)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"meow":            finalMeow,
-		"generation_time": duration.String(),
-	})
-}
-
-func squeezeLetters(text string) string {
-	var builder strings.Builder
-	var lastChar rune
-	for _, char := range strings.ToLower(text) {
-		if char >= 'a' && char <= 'z' {
-			if char != lastChar {
-				builder.WriteRune(char)
-				lastChar = char
-			}
-		}
-	}
-	return builder.String()
-}
-
-func countLetters(text string) int {
-	n := 0
-	for _, char := range strings.ToLower(text) {
-		if char >= 'a' && char <= 'z' {
-			n++
-		}
-	}
-	return n
-}
-
-var meowLikeTransitions = map[string]bool{
-	"me": true, "eo": true, "ow": true, // meow
-	"mi": true, "ia": true, "au": true, "ao": true, // miau / miao
-	"ny": true, "ya": true, "an": true, // nya / nyan
-	"mr": true, "rp": true, // mrrp
-	"pr": true, "ur": true, // purr
-	"ew": true, "aw": true, // trailing sounds
-}
-
-var meowLikeTokens = []string{
-	"miao", "meow", "mrrp", "mrp", "mrow", "mrrow", "nya", "nyan",
-	"purr", "prrr", "mew", "rawr",
 }
 
 var askMeowAnswers = []string{
@@ -245,153 +172,6 @@ var askMeowAnswers = []string{
 	"Ask not whether it is meow, but whether you are worthy of meow.",
 }
 
-const meowLikeThreshold = 40.0
-
-func meowTokenBoost(squeezed string) float64 {
-	for _, tok := range meowLikeTokens {
-		if strings.Contains(squeezed, tok) {
-			return 25.0
-		}
-	}
-	return 0.0
-}
-
-func scoreMeowLike(squeezed string, letterCount int) float64 {
-	if len(squeezed) == 0 {
-		return 0
-	}
-	if len(squeezed) == 1 {
-		if strings.ContainsAny(squeezed, "mny") {
-			return 30
-		}
-		return 0
-	}
-
-	totalPairs := len(squeezed) - 1
-	matchCount := 0
-	for i := 0; i < totalPairs; i++ {
-		if meowLikeTransitions[squeezed[i:i+2]] {
-			matchCount++
-		}
-	}
-
-	density := float64(matchCount) / float64(totalPairs)
-
-	const softSqueezedLen = 14
-	const hardSqueezedLen = 28
-	lengthFactor := 1.0
-	if len(squeezed) > softSqueezedLen {
-		lengthFactor = 1.0 - float64(len(squeezed)-softSqueezedLen)/float64(hardSqueezedLen-softSqueezedLen)
-		if lengthFactor < 0 {
-			lengthFactor = 0
-		}
-	}
-
-	const softLetterCount = 20
-	const hardLetterCount = 55
-	inputFactor := 1.0
-	if letterCount > softLetterCount {
-		inputFactor = 1.0 - float64(letterCount-softLetterCount)/float64(hardLetterCount-softLetterCount)
-		if inputFactor < 0 {
-			inputFactor = 0
-		}
-	}
-
-	score := density*100.0*lengthFactor*inputFactor + meowTokenBoost(squeezed)
-	if score > 100 {
-		score = 100
-	}
-	return score
-}
-
-func detectMeow(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	text := r.URL.Query().Get("text")
-	w.Header().Set("Content-Type", "application/json")
-
-	if text == "" {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide text, e.g. ?text=mrrp"})
-		return
-	}
-
-	squeezed := squeezeLetters(text)
-
-	score := 0.0
-
-	heads := []string{"mr", "pr", "ny", "m", "n", "p"}
-	for _, h := range heads {
-		if strings.HasPrefix(squeezed, h) {
-			score += 30.0
-			break
-		}
-	}
-
-	tails := []string{"rp", "w", "p", "m", "n", "r", "y", "a", "e", "i", "o", "u"}
-	for _, t := range tails {
-		if strings.HasSuffix(squeezed, t) {
-			score += 30.0
-			break
-		}
-	}
-
-	if strings.ContainsAny(squeezed, "aeiouywr") {
-		score += 40.0
-	}
-
-	allowedChars := "mnpryeouiwa"
-	for _, char := range squeezed {
-		if !strings.ContainsRune(allowedChars, char) {
-			score -= 30.0
-		}
-	}
-
-	if score < 0 {
-		score = 0
-	} else if score > 100 {
-		score = 100
-	}
-
-	isMeow := score >= 70.0
-	percString := fmt.Sprintf("%.1f%%", score)
-
-	duration := time.Since(start)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"input":           text,
-		"squeezed_form":   squeezed,
-		"is_meow":         isMeow,
-		"meow_percentage": percString,
-		"detection_time":  duration.String(),
-	})
-}
-
-func detectMeowLike(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	text := r.URL.Query().Get("text")
-	w.Header().Set("Content-Type", "application/json")
-
-	if text == "" {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide text, e.g. ?text=miao"})
-		return
-	}
-
-	squeezed := squeezeLetters(text)
-	letterCount := countLetters(text)
-	score := scoreMeowLike(squeezed, letterCount)
-	isMeowLike := score >= meowLikeThreshold
-	percString := fmt.Sprintf("%.1f%%", score)
-
-	duration := time.Since(start)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"input":           text,
-		"squeezed_form":   squeezed,
-		"is_meow_like":    isMeowLike,
-		"meow_percentage": percString,
-		"detection_time":  duration.String(),
-	})
-}
-
 func askMeow(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 
@@ -446,15 +226,15 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     <ul>
         <li>
             <code>GET <a href="/meow">/meow</a></code><br><br>
-            Returns a procedurally generated vocalization.
+            Returns a procedurally generated vocalization from the meow/mreow, nya/nyan, or prrr family.
         </li>
         <li>
             <code>GET <a href="/ismeow?text=mrrp">/ismeow?text={input}</a></code><br><br>
-            Returns phonetic trait-analysis confidence score.
+            Strictly checks whether the complete input is a structured feline vocalization.
         </li>
 		<li>
             <code>GET <a href="/meowlike?text=miao">/meowlike?text={input}</a></code><br><br>
-            Returns phonetic trait-analysis confidence score for meow-like vocalizations.
+            Tolerantly checks for structured meow-like vocalizations, including stretches and typos.
         </li>
         <li>
             <code>GET <a href="/askmeow?text=hello">/askmeow?text={question}</a></code><br><br>
