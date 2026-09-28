@@ -214,11 +214,59 @@ class BotLanguageTests(unittest.TestCase):
             "language": "en",
             "family": "meow",
         }
-        text = self.bot._format_analysis(strict, fuzzy)
-        self.assertIn("Fuzzy score: 30.8%", text)
-        self.assertIn("language: en, family: meow, match: embedded", text)
-        self.assertIn("text: 'meow', coverage: 30.8%", text)
+        text, formatted = self.bot._format_analysis(strict, fuzzy)
         self.assertIn("Verdict: Meow-like.", text)
+        self.assertIn("Language: en", text)
+        self.assertIn("Sound: meow · embedded", text)
+        self.assertIn("Strict: 0.0% · Fuzzy: 30.8%", text)
+        self.assertIn("Matched: 'meow' · 30.8% of letters", text)
+        self.assertIn(
+            '<strong><span data-mx-color="#E1B97D">Verdict: Meow-like.</span></strong>',
+            formatted,
+        )
+        self.assertIn('<span data-mx-color="#D98792">0.0%</span>', formatted)
+        self.assertIn('30.8%</span> of letters', formatted)
+
+    def test_shared_score_and_metadata_are_shown_once(self):
+        strict = {
+            "is_meow": True, "meow_percentage": "100.0%", "language": "en",
+            "family": "meow", "match_type": "exact",
+        }
+        fuzzy = {
+            **strict, "is_meow_like": True,
+        }
+        text, formatted = self.bot._format_analysis(strict, fuzzy)
+        self.assertEqual(
+            text,
+            "Verdict: Meow.\nLanguage: en\nSound: meow · exact\n"
+            "Strict / fuzzy score: 100.0%\nLimits: strict ≥75%, fuzzy ≥55%",
+        )
+        self.assertIn(
+            '<strong><span data-mx-color="#7FC4A3">Verdict: Meow.</span></strong>',
+            formatted,
+        )
+        self.assertIn('<span data-mx-color="#7FC4A3">100.0%</span>', formatted)
+
+        fuzzy["meow_percentage"] = "85.0%"
+        text, formatted = self.bot._format_analysis(strict, fuzzy)
+        self.assertIn("Strict: 100.0% · Fuzzy: 85.0%", text)
+        self.assertIn('<span data-mx-color="#9CC198">85.0%</span>', formatted)
+
+    def test_analysis_footer_is_escaped_html_with_plain_text_fallback(self):
+        strict = {"is_meow": False, "meow_percentage": "0.0%", "language": "auto"}
+        fuzzy = {
+            "is_meow_like": True, "meow_percentage": "50.0%",
+            "language": "en", "family": "meow", "match_type": "embedded",
+            "matched_text": "<meow & wow>", "coverage_percentage": 50,
+            "squeezed_form": "<meow & wow>", "detection_time": "12µs",
+        }
+        body, formatted = self.bot._format_analysis(strict, fuzzy)
+        self.assertIn("Normalized: <meow & wow> · API: fuzzy 12µs", body)
+        self.assertIn("Limits: strict ≥75%, coverage ≥25%", body)
+        self.assertIn("<sub><span", formatted)
+        self.assertIn('<span data-mx-color="#E1B97D">50.0%</span>', formatted)
+        self.assertIn("&lt;meow &amp; wow&gt;", formatted)
+        self.assertNotIn("<meow & wow>", formatted)
 
     def test_configurable_thresholds_control_verdicts_and_passive_replies(self):
         import asyncio
@@ -234,8 +282,13 @@ class BotLanguageTests(unittest.TestCase):
         }
         self.bot._strict_min_score = 85
         self.bot._fuzzy_min_score = 65
-        self.assertIn("closest language: en", self.bot._format_analysis(strict, fuzzy))
-        self.assertIn("Verdict: Not meow.", self.bot._format_analysis(strict, fuzzy))
+        text, formatted = self.bot._format_analysis(strict, fuzzy)
+        self.assertIn("Language: undetermined (closest: en)", text)
+        self.assertIn("Verdict: Not meow.", text)
+        self.assertIn(
+            '<strong><span data-mx-color="#D98792">Verdict: Not meow.</span></strong>',
+            formatted,
+        )
 
         self.bot._embedded_min_coverage = 35
         evt = self.event("You're cute meow")
@@ -268,6 +321,12 @@ class BotLanguageTests(unittest.TestCase):
         self.assertEqual(self.calls[0], ("/ismeow", {"text": "miaou", "lang": "fr"}))
         self.assertEqual(self.calls[1], ("/meowlike", {"text": "miaou", "lang": "fr"}))
         self.assertIn("Verdict: Meow.", self.sent_body())
+        content = self.bot.client.send_message.await_args.args[1]
+        self.assertEqual(content.format, meow_module.Format.HTML)
+        self.assertIn(
+            '<strong><span data-mx-color="#7FC4A3">Verdict: Meow.</span></strong>',
+            content.formatted_body,
+        )
 
     def test_bare_ping_generates_using_room_response_language(self):
         import asyncio

@@ -1,8 +1,9 @@
+import html
 import math
 import re
 
 import aiohttp
-from mautrix.types import EventType, MessageType, TextMessageEventContent
+from mautrix.types import EventType, Format, MessageType, TextMessageEventContent
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
@@ -29,6 +30,9 @@ MEOW_BALL_PHRASE = re.compile(
     re.IGNORECASE,
 )
 LANGUAGE_OPTION = re.compile(r"^--(detect|reply)=([A-Za-z0-9-]+)$")
+PASTEL_RED = "#D98792"
+PASTEL_AMBER = "#E1B97D"
+PASTEL_GREEN = "#7FC4A3"
 
 
 MESSAGES = {
@@ -140,6 +144,24 @@ class Meow(Plugin):
     def _percentage(value: object) -> float:
         return float(str(value).rstrip("%"))
 
+    @staticmethod
+    def _score_color(score: float) -> str:
+        if not math.isfinite(score):
+            return "#A99FB3"
+        score = max(0.0, min(score, 100.0))
+        low, high, fraction = (
+            ((217, 135, 146), (225, 185, 125), score / 50)
+            if score <= 50
+            else ((225, 185, 125), (127, 196, 163), (score - 50) / 50)
+        )
+        return "#{:02X}{:02X}{:02X}".format(
+            *(round(start + (end - start) * fraction) for start, end in zip(low, high))
+        )
+
+    @staticmethod
+    def _colored(text: str, color: str) -> str:
+        return f'<span data-mx-color="{color}">{html.escape(text)}</span>'
+
     def _matches_strict(self, data: dict) -> bool:
         return bool(data.get("is_meow")) and (
             self._percentage(data["meow_percentage"]) >= self._strict_min_score
@@ -238,8 +260,12 @@ class Meow(Plugin):
         orig_evt: MessageEvent | None,
         is_reply: bool,
         body: str,
+        formatted_body: str | None = None,
     ) -> None:
         content = TextMessageEventContent(msgtype=MessageType.TEXT, body=body)
+        if formatted_body:
+            content.format = Format.HTML
+            content.formatted_body = formatted_body
         content.set_reply(orig_evt if (is_reply and orig_evt) else evt)
         await self.client.send_message(evt.room_id, content)
 
@@ -282,33 +308,102 @@ class Meow(Plugin):
             remaining = pieces[1].lstrip() if len(pieces) > 1 else ""
         return remaining, options, None
 
-    def _format_analysis(self, strict: dict, fuzzy: dict) -> str:
-        def detail(data: dict) -> str:
-            language = data.get("language")
-            closest = data.get("closest_language")
-            if language == "auto" and closest:
-                parts = [f"closest language: {closest}"]
-            else:
-                parts = [f"language: {language or 'unknown'}"]
-            parts.append(f"family: {data.get('family', 'unknown')}")
-            parts.append(f"match: {data.get('match_type', 'none')}")
-            if data.get("matched_text"):
-                parts.append(f"text: {data['matched_text']!r}")
-            if data.get("match_type") == "embedded" and data.get("coverage_percentage") is not None:
-                parts.append(f"coverage: {float(data['coverage_percentage']):.1f}%")
-            return ", ".join(parts)
-
-        lines = [
-            f"Strict score: {strict['meow_percentage']} ({detail(strict)})",
-            f"Fuzzy score: {fuzzy['meow_percentage']} ({detail(fuzzy)})",
-        ]
-        if self._matches_strict(strict):
-            lines.append(MESSAGES["verdict_meow"])
-        elif self._matches_fuzzy(fuzzy):
-            lines.append(MESSAGES["verdict_like"])
+    def _format_analysis(self, strict: dict, fuzzy: dict) -> tuple[str, str]:
+        strict_match = self._matches_strict(strict)
+        fuzzy_match = self._matches_fuzzy(fuzzy)
+        if strict_match:
+            verdict = MESSAGES["verdict_meow"]
+        elif fuzzy_match:
+            verdict = MESSAGES["verdict_like"]
         else:
-            lines.append(MESSAGES["verdict_no"])
-        return "\n".join(lines)
+            verdict = MESSAGES["verdict_no"]
+
+        if strict_match:
+            selected = strict
+        elif fuzzy_match:
+            selected = fuzzy
+        elif self._percentage(strict["meow_percentage"]) > self._percentage(fuzzy["meow_percentage"]):
+            selected = strict
+        else:
+            selected = fuzzy
+
+        language = selected.get("language", "auto")
+        if language == "auto":
+            closest = selected.get("closest_language")
+            language_line = f"Language: undetermined (closest: {closest})" if closest else "Language: undetermined"
+        else:
+            language_line = f"Language: {language}"
+
+        family = selected.get("family", "unknown")
+        match_type = selected.get("match_type", "none")
+        if family == "unknown":
+            sound_line = "Sound: none"
+        else:
+            sound_label = "Sound" if strict_match or fuzzy_match else "Closest sound"
+            sound_line = f"{sound_label}: {family} · {match_type}"
+
+        strict_score = strict["meow_percentage"]
+        fuzzy_score = fuzzy["meow_percentage"]
+        if strict_score == fuzzy_score:
+            score_line = f"Strict / fuzzy score: {strict_score}"
+        else:
+            score_line = f"Strict: {strict_score} · Fuzzy: {fuzzy_score}"
+
+        lines = [verdict, language_line, sound_line, score_line]
+        matched_html = None
+        if selected.get("matched_text"):
+            matched_line = f"Matched: {selected['matched_text']!r}"
+            matched_html = html.escape(matched_line)
+            if selected.get("coverage_percentage") is not None:
+                coverage = float(selected["coverage_percentage"])
+                coverage_text = f"{coverage:.1f}%"
+                matched_line += f" · {coverage_text} of letters"
+                matched_html += " · " + self._colored(
+                    coverage_text, self._score_color(coverage)
+                ) + " of letters"
+            lines.append(matched_line)
+
+        if selected.get("match_type") == "embedded":
+            fuzzy_limit = f"coverage ≥{self._embedded_min_coverage:g}%"
+        else:
+            fuzzy_limit = f"fuzzy ≥{self._fuzzy_min_score:g}%"
+        diagnostics = [f"Limits: strict ≥{self._strict_min_score:g}%, {fuzzy_limit}"]
+        if selected.get("squeezed_form"):
+            normalized = str(selected["squeezed_form"])
+            diagnostics.append(f"Normalized: {normalized[:80]}{'…' if len(normalized) > 80 else ''}")
+        timings = [
+            f"{name} {data['detection_time']}"
+            for name, data in (("strict", strict), ("fuzzy", fuzzy))
+            if data.get("detection_time")
+        ]
+        if timings:
+            diagnostics.append("API: " + ", ".join(timings))
+
+        footer = " · ".join(diagnostics)
+        body = "\n".join(lines + ([footer] if footer else []))
+        verdict_color = PASTEL_GREEN if strict_match else PASTEL_AMBER if fuzzy_match else PASTEL_RED
+        if strict_score == fuzzy_score:
+            score_html = "Strict / fuzzy score: " + self._colored(
+                strict_score, self._score_color(self._percentage(strict_score))
+            )
+        else:
+            score_html = "Strict: " + self._colored(
+                strict_score, self._score_color(self._percentage(strict_score))
+            ) + " · Fuzzy: " + self._colored(
+                fuzzy_score, self._score_color(self._percentage(fuzzy_score))
+            )
+        formatted_lines = [
+            f"<strong>{self._colored(verdict, verdict_color)}</strong>",
+            html.escape(language_line),
+            html.escape(sound_line),
+            score_html,
+        ]
+        if matched_html:
+            formatted_lines.append(matched_html)
+        formatted = "<br>".join(formatted_lines)
+        if footer:
+            formatted += f'<br><sub><span data-mx-color="#8994A8">{html.escape(footer)}</span></sub>'
+        return body, formatted
 
     @event.on(EventType.ROOM_MESSAGE)
     async def handle_message(self, evt: MessageEvent) -> None:
@@ -421,11 +516,13 @@ class Meow(Plugin):
                     "/meowlike",
                     {"text": target_text, "lang": detect_language},
                 )
+                analysis_body, analysis_html = self._format_analysis(data_strict, data_fuzzy)
                 await self._reply_text(
                     evt,
                     orig_evt,
                     is_reply,
-                    self._format_analysis(data_strict, data_fuzzy),
+                    analysis_body,
+                    analysis_html,
                 )
 
             except UnsupportedLanguageError as error:
