@@ -1,70 +1,82 @@
 # MaaS (Meowing as a Service)
 
-A low-latency API built in Go for generating and detecting feline vocalizations. The application is designed for high throughput and minimal system footprint, deployed as a statically linked binary within a scratch Docker container.
+A low-latency Go API for generating and detecting feline vocalizations. It runs as a statically linked binary in a small Docker container.
 
 Website: [meow.plz.pet](https://meow.plz.pet)
 
 ## API Endpoints
 
-### 1. Generate 
+### 1. Generate
+
 `GET /meow`
+
 Generates a vocalization using procedural phonetic combinations.
 
-**Response:**
+**Example response:**
+
 ```json
 {
   "generation_time": "14.625µs",
-  "meow": "mreeeeooowww"
+  "meow": "mreeeeooowww",
+  "family": "meow",
+  "language": "en"
 }
 ```
 
 ### 2. Detect
 
 `GET /ismeow?text={input}`
-Analyzes an input string against phonetic trait parameters to calculate a confidence score.
 
-**Response:**
+Checks whether the entire input is a meow, including stretched spellings like `meeeeooowowwwwww`.
+
+**Example response:**
 
 ```json
 {
   "detection_time": "18.210µs",
-  "input": "mruuuuuurp",
+  "input": "mrrp",
   "is_meow": true,
   "meow_percentage": "100.0%",
-  "squeezed_form": "mrup"
+  "squeezed_form": "mrrp",
+  "family": "prrr",
+  "match_type": "exact",
+  "language": "en"
 }
 ```
 
+### 3. Detect meow-like text
+
+`GET /meowlike?text={input}`
+
+Recognizes meows in short messages, including `meows`, `meowing`, and `purrfect`. `/ismeow` remains the strict check.
+
+### 4. Meow 8-ball
+
+`GET /askmeow?text={question}`
+
+Returns a deterministic answer in English.
+
+### Languages
+
+Add `lang=fr` (or another supported tag) to `/meow`, `/ismeow`, or `/meowlike`. These endpoints default to English. Detection also accepts `lang=auto` to find the language. `GET /languages` lists the supported tags.
+
 ## Configuration
 
-The application reads from `config.json` in the root directory. If missing, it uses default values.
+The API reads `config.json` from the root directory. If missing, it uses default values. For example:
 
 ```json
 {
-    "port": "8000",
-    "generate_endpoint": "/meow",
-    "detect_endpoint": "/ismeow"
+  "port": "8000",
+  "generate_endpoint": "/meow",
+  "detect_endpoint": "/ismeow"
 }
 ```
 
 ## Local Development
 
-### Requirements
-
-* Go 1.26.3
-
-### Build and Run
+Requires Go 1.26.3 or later.
 
 ```bash
-git clone https://github.com/7w1/Meow.git
-cd maas
-go run main.go
-```
-
-### Testing
-
-Run the 100,000-iteration test suite:
-
-```bash
-go test -v
+go run .
+go test ./...
 ```

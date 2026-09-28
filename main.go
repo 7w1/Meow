@@ -55,6 +55,7 @@ func main() {
 	http.HandleFunc(cfg.DetectEndpoint, detectMeow)
 	http.HandleFunc(cfg.AskEndpoint, askMeow)
 	http.HandleFunc(cfg.MeowLikeEndpoint, detectMeowLike)
+	http.HandleFunc("/languages", languagesHandler)
 
 	fmt.Printf("MaaS is running on port %s (ฅ'ω'ฅ)\n", cfg.Port)
 	fmt.Printf("    -> Generation: %s\n", cfg.GenerateEndpoint)
@@ -66,7 +67,6 @@ func main() {
 }
 
 var askMeowAnswers = []string{
-	// Strong yes
 	"It is certain meow.",
 	"It is decidedly meow.",
 	"Without a meow.",
@@ -87,7 +87,6 @@ var askMeowAnswers = []string{
 	"That's a meow from me.",
 	"Meow beyond reasonable doubt.",
 	"Verdict: meow.",
-	// Leaning yes
 	"Probably meow.",
 	"Looks meow to me.",
 	"I'd bet a treat on meow.",
@@ -98,7 +97,6 @@ var askMeowAnswers = []string{
 	"Soft yes, loud meow.",
 	"The sunbeam approves: meow.",
 	"Meow pending, but likely.",
-	// Uncertain / try again
 	"Reply hazy, try meowing again.",
 	"Ask again later, meow.",
 	"Better not tell you meow.",
@@ -118,7 +116,6 @@ var askMeowAnswers = []string{
 	"Results may vary by cat mood.",
 	"Meow is loading...",
 	"The window stare continues. No answer yet.",
-	// Strong no
 	"Don't count on meow.",
 	"My reply is no meow.",
 	"My sources say no meow.",
@@ -134,14 +131,12 @@ var askMeowAnswers = []string{
 	"The empty bowl disagrees: not meow.",
 	"Unlikely meow.",
 	"Meow? In this economy?",
-	// Leaning no
 	"Probably not meow.",
 	"Unlikely, but admire the audacity.",
 	"Meow doubtful.",
 	"The tail is low on this one.",
 	"Not looking meow.",
 	"Meow forecast: cloudy with a chance of no.",
-	// Playful / thematic
 	"Have you tried meowing at it?",
 	"Meow is a state of mind.",
 	"Only on Tuesdays that land on a meow.",
@@ -173,29 +168,30 @@ var askMeowAnswers = []string{
 }
 
 func askMeow(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	text := r.URL.Query().Get("text")
-	w.Header().Set("Content-Type", "application/json")
-
-	if text == "" {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide a question, e.g. ?text=is it time for food"})
+	if !requireGET(w, r) {
 		return
 	}
-
-	cleanText := strings.ToLower(strings.TrimSpace(text))
-
+	start := time.Now()
+	values, queryErr := parseRequestQuery(r)
+	if queryErr != nil {
+		writeAPIError(w, queryErr)
+		return
+	}
+	if _, supplied := values["lang"]; supplied {
+		writeAPIJSON(w, http.StatusBadRequest, map[string]string{"error": "lang is not supported on /askmeow"})
+		return
+	}
+	text, apiErr := getRequestText(r, "a question", "is it time for food")
+	if apiErr != nil {
+		writeAPIError(w, apiErr)
+		return
+	}
 	h := fnv.New32a()
-	h.Write([]byte(cleanText))
-	hashValue := h.Sum32()
-
-	answer := askMeowAnswers[hashValue%uint32(len(askMeowAnswers))]
-
-	duration := time.Since(start)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"question":     text,
-		"answer":       answer,
-		"latency_time": duration.String(),
+	_, _ = h.Write([]byte(strings.ToLower(strings.TrimSpace(text))))
+	answer := askMeowAnswers[h.Sum32()%uint32(len(askMeowAnswers))]
+	writeAPIJSON(w, http.StatusOK, map[string]interface{}{
+		"question": text, "answer": answer,
+		"latency_time": time.Since(start).String(),
 	})
 }
 
@@ -226,21 +222,22 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
     <ul>
         <li>
             <code>GET <a href="/meow">/meow</a></code><br><br>
-            Returns a procedurally generated vocalization from the meow/mreow, nya/nyan, or prrr family.
+            Generates a vocalization. Add a supported <code>?lang=...</code> tag to choose its language.
         </li>
         <li>
             <code>GET <a href="/ismeow?text=mrrp">/ismeow?text={input}</a></code><br><br>
-            Strictly checks whether the complete input is a structured feline vocalization.
+            Strictly checks the complete input in the selected language (default: English). Example: <code>/ismeow?text=にゃー&amp;lang=ja</code>.
         </li>
 		<li>
             <code>GET <a href="/meowlike?text=miao">/meowlike?text={input}</a></code><br><br>
-            Tolerantly checks for structured meow-like vocalizations, including stretches and typos.
+            Checks the complete input and substantial word-level vocalizations. An embedded result reports Unicode-letter coverage; this score is not a probability.
         </li>
         <li>
             <code>GET <a href="/askmeow?text=hello">/askmeow?text={question}</a></code><br><br>
-            Returns a deterministic response based on the input question.
+            Returns a deterministic English response.
         </li>
     </ul>
+    <p>Supported meow languages: <code>en</code>, <code>fr</code>, <code>ja</code>, <code>tr</code>, <code>ru</code>, <code>uk</code>, <code>zh-Hans</code>, <code>zh-Hant</code>, <code>es</code>, <code>nl</code>, <code>de</code>, <code>hy</code>. Detection accepts <code>lang=auto</code>. See <a href="https://github.com/7w1/Meow">the README</a> for matching limits and bot settings.</p>
     <br>
     <p>Made by 7w1</p>
 </body>

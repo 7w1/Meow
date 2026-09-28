@@ -10,6 +10,8 @@ import (
 func TestMeowDetectionCorpus(t *testing.T) {
 	shouldBeMeow := []string{
 		"meow",
+		"meeeeooowowwwwww",
+		"meowowowwww",
 		"mew",
 		"mrow",
 		"mreow",
@@ -75,6 +77,8 @@ func TestOrdinaryWordDetectionCorpus(t *testing.T) {
 		"merry",
 		"meat",
 		"meowing",
+		"meows",
+		"meowoway",
 		"nylon",
 		"nyet",
 		"near",

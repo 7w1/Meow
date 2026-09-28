@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"strings"
-	"time"
 	"unicode"
 )
 
@@ -26,25 +23,43 @@ type vocalizationForm struct {
 	text      string
 	family    vocalizationFamily
 	exactOnly bool
+	anchor    string
+	embeddedOK bool
+	embeddedOnly bool
 }
 
 var vocalizationForms = []vocalizationForm{
-	{family: familyMeow, text: "meow"},
-	{family: familyMeow, text: "mreow"},
-	{family: familyMeow, text: "mrow"},
+	{family: familyMeow, text: "meow", embeddedOK: true},
+	{family: familyMeow, text: "meows", exactOnly: true, embeddedOK: true, embeddedOnly: true},
+	{family: familyMeow, text: "meowing", exactOnly: true, embeddedOK: true, embeddedOnly: true},
+	{family: familyMeow, text: "mreow", embeddedOK: true},
+	{family: familyMeow, text: "mrow", embeddedOK: true},
 	{family: familyMeow, text: "mroe"},
 	{family: familyMeow, text: "mwor"},
 	{family: familyMeow, text: "mweo"},
-	{family: familyMeow, text: "mew"},
-	{family: familyMeow, text: "miao"},
-	{family: familyMeow, text: "miau"},
-	{family: familyMeow, text: "rawr", exactOnly: true},
-	{family: familyNya, text: "nya"},
-	{family: familyNya, text: "nyan"},
-	{family: familyPrrr, text: "prr"},
-	{family: familyPrrr, text: "purr"},
-	{family: familyPrrr, text: "mrrp"},
+	{family: familyMeow, text: "mew", embeddedOK: true},
+	{family: familyMeow, text: "miao", embeddedOK: true},
+	{family: familyMeow, text: "miau", embeddedOK: true},
+	{family: familyMeow, text: "rawr", exactOnly: true, embeddedOK: true},
+	{family: familyNya, text: "nya", embeddedOK: true},
+	{family: familyNya, text: "nyan", embeddedOK: true},
+	{family: familyPrrr, text: "prr", embeddedOK: true},
+	{family: familyPrrr, text: "purr", embeddedOK: true},
+	{family: familyPrrr, text: "purrfect", exactOnly: true, embeddedOK: true, embeddedOnly: true},
+	{family: familyPrrr, text: "mrrp", embeddedOK: true},
 	{family: familyPrrr, text: "mrp", exactOnly: true},
+}
+
+var vocalizationFormsByFamily = indexVocalizationForms()
+
+func indexVocalizationForms() map[vocalizationFamily][]vocalizationForm {
+	indexed := make(map[vocalizationFamily][]vocalizationForm)
+	for _, form := range vocalizationForms {
+		if !form.embeddedOnly {
+			indexed[form.family] = append(indexed[form.family], form)
+		}
+	}
+	return indexed
 }
 
 type generationFamily struct {
@@ -122,17 +137,7 @@ func generateVocalization() (string, vocalizationFamily) {
 }
 
 func generateMeow(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	finalMeow, family := generateVocalization()
-
-	duration := time.Since(start)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"meow":            finalMeow,
-		"family":          string(family),
-		"generation_time": duration.String(),
-	})
+	serveGenerateMeow(w, r)
 }
 
 type normalizedVocalization struct {
@@ -255,13 +260,7 @@ func minInt(values ...int) int {
 }
 
 func formsForFamily(family vocalizationFamily) []vocalizationForm {
-	forms := make([]vocalizationForm, 0)
-	for _, form := range vocalizationForms {
-		if form.family == family {
-			forms = append(forms, form)
-		}
-	}
-	return forms
+	return vocalizationFormsByFamily[family]
 }
 
 func bestFamilyMatch(squeezed string, family vocalizationFamily, maxEditPerSegment int) familyMatch {
@@ -397,6 +396,9 @@ type vocalizationAnalysis struct {
 	fuzzyScore  float64
 	isStrict    bool
 	isFuzzy     bool
+	isEmbedded  bool
+	matchedText string
+	coverage    float64
 }
 
 func analyzeVocalization(text string) vocalizationAnalysis {
@@ -405,6 +407,24 @@ func analyzeVocalization(text string) vocalizationAnalysis {
 		normalized: normalized,
 		family:     "unknown",
 		matchType:  "none",
+	}
+	for _, form := range vocalizationForms {
+		if form.embeddedOnly && normalized.squeezed == form.text {
+			return analysis
+		}
+	}
+	if isMeowEcho(normalized.squeezed) {
+		score := 100 - 35*float64(normalized.unknownCount)
+		if len(normalized.letters) > maxVocalizationInputLetters {
+			score -= 40
+		}
+		analysis.family = familyMeow
+		analysis.matchType = "stretched"
+		analysis.strictScore = max(0, score)
+		analysis.fuzzyScore = analysis.strictScore
+		analysis.isStrict = normalized.unknownCount == 0 && len(normalized.letters) <= maxVocalizationInputLetters && score >= strictVocalizationThreshold
+		analysis.isFuzzy = normalized.unknownCount <= 2 && score >= meowLikeThreshold
+		return analysis
 	}
 
 	var bestMatch familyMatch
@@ -456,54 +476,27 @@ func analyzeVocalization(text string) vocalizationAnalysis {
 	return analysis
 }
 
-func detectMeow(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	text := r.URL.Query().Get("text")
-	w.Header().Set("Content-Type", "application/json")
-
-	if text == "" {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide text, e.g. ?text=mrrp"})
-		return
+func isMeowEcho(squeezed string) bool {
+	if !strings.HasPrefix(squeezed, "meow") {
+		return false
 	}
+	tail := strings.TrimPrefix(squeezed, "meow")
+	if len(tail) < 2 || len(tail)%2 != 0 {
+		return false
+	}
+	for len(tail) > 0 {
+		if !strings.HasPrefix(tail, "ow") {
+			return false
+		}
+		tail = tail[2:]
+	}
+	return true
+}
 
-	analysis := analyzeVocalization(text)
-	percString := fmt.Sprintf("%.1f%%", analysis.strictScore)
-
-	duration := time.Since(start)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"input":           text,
-		"squeezed_form":   analysis.normalized.squeezed,
-		"is_meow":         analysis.isStrict,
-		"meow_percentage": percString,
-		"family":          string(analysis.family),
-		"match_type":      analysis.matchType,
-		"detection_time":  duration.String(),
-	})
+func detectMeow(w http.ResponseWriter, r *http.Request) {
+	serveDetectMeow(w, r)
 }
 
 func detectMeowLike(w http.ResponseWriter, r *http.Request) {
-	start := time.Now()
-
-	text := r.URL.Query().Get("text")
-	w.Header().Set("Content-Type", "application/json")
-
-	if text == "" {
-		json.NewEncoder(w).Encode(map[string]string{"error": "Please provide text, e.g. ?text=miao"})
-		return
-	}
-
-	analysis := analyzeVocalization(text)
-	percString := fmt.Sprintf("%.1f%%", analysis.fuzzyScore)
-
-	duration := time.Since(start)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"input":           text,
-		"squeezed_form":   analysis.normalized.squeezed,
-		"is_meow_like":    analysis.isFuzzy,
-		"meow_percentage": percString,
-		"family":          string(analysis.family),
-		"match_type":      analysis.matchType,
-		"detection_time":  duration.String(),
-	})
+	serveDetectMeowLike(w, r)
 }
