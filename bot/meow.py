@@ -10,9 +10,12 @@ from maubot.handlers import event
 
 
 SUPPORTED_LANGUAGES = frozenset(
-    {"en", "fr", "ja", "tr", "ru", "uk", "zh-hans", "zh-hant", "es", "nl", "de", "hy"}
+    {
+        "en", "fr", "ja", "tr", "ru", "uk", "zh-hans", "zh-hant",
+        "es", "nl", "de", "hy", "eo", "ar", "hi",
+    }
 )
-SUPPORTED_LANGUAGE_LABELS = "auto, de, en, es, fr, hy, ja, nl, ru, tr, uk, zh-Hans, zh-Hant"
+SUPPORTED_LANGUAGE_LABELS = "auto, ar, de, en, eo, es, fr, hi, hy, ja, nl, ru, tr, uk, zh-Hans, zh-Hant"
 _VERDICT = r"(?:true|correct|accurate|real|right|valid)"
 _POINTER = r"(?:this|that)"
 MEOW_BALL_PHRASE = re.compile(

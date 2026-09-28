@@ -49,6 +49,7 @@ func TestLanguageWholeInputRecognition(t *testing.T) {
 		{name: "Russian meow", language: "ru", input: "мяу", strict: true, fuzzy: true},
 		{name: "Russian purr", language: "ru", input: "мур-мур", strict: true, fuzzy: true},
 		{name: "Ukrainian meow", language: "uk", input: "няв-няв", strict: true, fuzzy: true},
+		{name: "Ukrainian verb to meow", language: "uk", input: "нявкати", strict: true, fuzzy: true},
 		{name: "Ukrainian purr", language: "uk", input: "мур-мур", strict: true, fuzzy: true},
 		{name: "Simplified Chinese short form", language: "zh-hans", input: "喵", strict: true, fuzzy: true},
 		{name: "Traditional Chinese repeated form", language: "zh-hant", input: "喵喵", strict: true, fuzzy: true},
@@ -62,6 +63,18 @@ func TestLanguageWholeInputRecognition(t *testing.T) {
 		{name: "German purr", language: "de", input: "schnurr", strict: true, fuzzy: true},
 		{name: "Armenian meow", language: "hy", input: "մյաու", strict: true, fuzzy: true},
 		{name: "Armenian purr", language: "hy", input: "մըռռ", strict: true, fuzzy: true},
+		{name: "Esperanto miaŭ", language: "eo", input: "miaŭ", strict: true, fuzzy: true},
+		{name: "Esperanto mjaŭ", language: "eo", input: "mjaŭ", strict: true, fuzzy: true},
+		{name: "Esperanto x-system miaŭ", language: "eo", input: "miaux", strict: true, fuzzy: true},
+		{name: "Esperanto x-system mjaŭ", language: "eo", input: "mjaux", strict: true, fuzzy: true},
+		{name: "Esperanto purr", language: "eo", input: "mur-mur", strict: true, fuzzy: true},
+		{name: "Arabic formal meow", language: "ar", input: "مواء", strict: true, fuzzy: true},
+		{name: "Arabic onomatopoeia", language: "ar", input: "مياو", strict: true, fuzzy: true},
+		{name: "Hindi canonical meow", language: "hi", input: "म्याऊँ", strict: true, fuzzy: true},
+		{name: "Hindi anusvara spelling", language: "hi", input: "म्याऊं", strict: true, fuzzy: true},
+		{name: "Hindi alternate miaau spelling", language: "hi", input: "मियाऊँ", strict: true, fuzzy: true},
+		{name: "Hindi alternate meow", language: "hi", input: "म्याँव", strict: true, fuzzy: true},
+		{name: "Hindi requested spelling", language: "hi", input: "मियांउ", strict: true, fuzzy: true},
 		{name: "other pack does not see English", language: "fr", input: "meow", strict: false, fuzzy: false},
 		{name: "digits are not part of a new-pack sound", language: "fr", input: "miaou1", strict: false, fuzzy: false},
 	}
@@ -96,6 +109,11 @@ func TestResearchBackedVariantsStayInTheirSoundFamily(t *testing.T) {
 		{language: "de", input: "schnurr", family: familyPrrr},
 		{language: "hy", input: "մյաու-մյաու", family: familyMeow},
 		{language: "hy", input: "մըռռ", family: familyPrrr},
+		{language: "eo", input: "miaŭ-miaŭ", family: familyMeow},
+		{language: "eo", input: "ronron", family: familyPrrr},
+		{language: "ar", input: "مواء", family: familyMeow},
+		{language: "ar", input: "مياو", family: familyMeow},
+		{language: "hi", input: "म्याऊँ-म्याऊँ", family: familyMeow},
 	}
 	for _, test := range tests {
 		t.Run(test.language+"/"+test.input, func(t *testing.T) {
@@ -276,6 +294,9 @@ func TestAutomaticDetectionFindsLanguageAndKeepsAmbiguousFormsStable(t *testing.
 		{input: "miauw", language: "nl"},
 		{input: "maunz", language: "de"},
 		{input: "մյաու", language: "hy"},
+		{input: "mjaŭ", language: "eo"},
+		{input: "مياو", language: "ar"},
+		{input: "म्याऊँ", language: "hi"},
 		{input: "miau", language: "de"},
 	}
 	for _, test := range tests {

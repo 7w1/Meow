@@ -96,6 +96,7 @@ func buildLanguageRegistry() (map[string]*languagePack, error) {
 	}
 	ukForms := []vocalizationForm{
 		{family: familyMeow, text: "няв", anchor: "н", embeddedOK: true},
+		{family: familyMeow, text: "нявкати", anchor: "н"},
 		{family: familyPrrr, text: "мур", anchor: "м", embeddedOK: true},
 	}
 	zhHansForms := []vocalizationForm{
@@ -134,6 +135,25 @@ func buildLanguageRegistry() (map[string]*languagePack, error) {
 	hyForms := []vocalizationForm{
 		{family: familyMeow, text: "մյաու", anchor: "մ", embeddedOK: true},
 		{family: familyPrrr, text: "մըռռ", anchor: "մ", embeddedOK: true},
+	}
+	eoForms := []vocalizationForm{
+		{family: familyMeow, text: "miaŭ", anchor: "m", embeddedOK: true},
+		{family: familyMeow, text: "mjaŭ", anchor: "m", embeddedOK: true},
+		{family: familyMeow, text: "miaux", anchor: "m", embeddedOK: true},
+		{family: familyMeow, text: "mjaux", anchor: "m", embeddedOK: true},
+		{family: familyPrrr, text: "mur-mur", anchor: "m", embeddedOK: true},
+		{family: familyPrrr, text: "ronron", anchor: "r", embeddedOK: true},
+	}
+	arForms := []vocalizationForm{
+		{family: familyMeow, text: "مواء", anchor: "م", embeddedOK: true},
+		{family: familyMeow, text: "مياو", anchor: "م", embeddedOK: true},
+	}
+	hiForms := []vocalizationForm{
+		{family: familyMeow, text: "म्याऊँ", anchor: "म", embeddedOK: true},
+		{family: familyMeow, text: "म्याऊं", anchor: "म", embeddedOK: true},
+		{family: familyMeow, text: "मियाऊँ", anchor: "म", embeddedOK: true},
+		{family: familyMeow, text: "म्याँव", anchor: "म", embeddedOK: true},
+		{family: familyMeow, text: "मियांउ", anchor: "म", embeddedOK: true},
 	}
 	registry := map[string]*languagePack{
 		"en": {
@@ -218,6 +238,21 @@ func buildLanguageRegistry() (map[string]*languagePack, error) {
 				{family: familyMeow, variants: []string{"մյաու", "մյաու-մյաու"}, weight: 8, stretchChars: "աու", stretchChance: 0.4, maxExtra: 2},
 				{family: familyPrrr, variants: []string{"մըռռ"}, weight: 2, stretchChars: "ռ", stretchChance: 0.35, maxExtra: 2},
 			},
+		},
+		"eo": {
+			Tag: "eo", Forms: eoForms,
+			Generators: []generationFamily{
+				{family: familyMeow, variants: []string{"miaŭ", "mjaŭ", "miaŭ-miaŭ"}, weight: 8},
+				{family: familyPrrr, variants: []string{"mur-mur", "ronron"}, weight: 2},
+			},
+		},
+		"ar": {
+			Tag: "ar", Forms: arForms,
+			Generators: []generationFamily{{family: familyMeow, variants: []string{"مواء", "مياو"}, weight: 10}},
+		},
+		"hi": {
+			Tag: "hi", Forms: hiForms,
+			Generators: []generationFamily{{family: familyMeow, variants: []string{"म्याऊँ", "म्याऊँ-म्याऊँ"}, weight: 10}},
 		},
 	}
 
@@ -317,7 +352,7 @@ func normalizePackToken(text string, pack *languagePack) string {
 	result.Grow(len(folded))
 	var previous rune
 	for _, r := range folded {
-		if !unicode.IsLetter(r) {
+		if !unicode.IsLetter(r) && !(pack.Tag == "hi" && unicode.IsMark(r)) {
 			previous = 0
 			continue
 		}
@@ -337,7 +372,7 @@ func normalizedPackInput(text string, pack *languagePack) normalizedVocalization
 	var squeezed strings.Builder
 	unknownCount := 0
 	for _, r := range folded {
-		if unicode.IsLetter(r) {
+		if unicode.IsLetter(r) || pack.Tag == "hi" && unicode.IsMark(r) {
 			letters.WriteRune(r)
 			if r != previous || !strings.ContainsRune(pack.StretchChars, r) {
 				squeezed.WriteRune(r)
