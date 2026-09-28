@@ -237,7 +237,7 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
             Returns a deterministic English response.
         </li>
     </ul>
-    <p>Supported meow languages: <code>en</code>, <code>fr</code>, <code>ja</code>, <code>tr</code>, <code>ru</code>, <code>uk</code>, <code>zh-Hans</code>, <code>zh-Hant</code>, <code>es</code>, <code>nl</code>, <code>de</code>, <code>hy</code>. Detection accepts <code>lang=auto</code>. See <a href="https://github.com/7w1/Meow">the README</a> for matching limits and bot settings.</p>
+    <p>Supported meow languages: <code>en</code>, <code>fr</code>, <code>ja</code>, <code>tr</code>, <code>ru</code>, <code>uk</code>, <code>zh-Hans</code>, <code>zh-Hant</code>, <code>es</code>, <code>nl</code>, <code>de</code>, <code>hy</code>. Detection accepts <code>lang=auto</code>. Use <a href="/languages">/languages</a> for the current list.</p>
     <br>
     <p>Made by 7w1</p>
 </body>

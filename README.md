@@ -48,7 +48,7 @@ Checks whether the entire input is a meow, including stretched spellings like `m
 
 `GET /meowlike?text={input}`
 
-Recognizes meows in short messages, including `meows`, `meowing`, and `purrfect`. `/ismeow` remains the strict check.
+Recognizes meows in short messages and meow-like things.
 
 ### 4. Meow 8-ball
 

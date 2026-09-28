@@ -1,3 +1,4 @@
+import math
 import re
 
 import aiohttp
@@ -33,10 +34,10 @@ LANGUAGE_OPTION = re.compile(r"^--(detect|reply)=([A-Za-z0-9-]+)$")
 MESSAGES = {
     "help": (
         "Meow Help:\n"
-        "- Ping to generate a meow (English if no language is available).\n"
+        "- Ping to generate a meow (English by default).\n"
         "- Ping with text (or reply to a message) for meownalysis.\n"
         "- Passive replies in target rooms detect the meow language automatically.\n"
-        "- Detection and generated meows default to automatic language selection. Use leading --detect=<tag> and --reply=<tag> options for this ping only.\n"
+        "- Detection defaults to auto. Passive replies use the detected language. Use leading --detect=<tag> and --reply=<tag> options for this ping only.\n"
         "- Ping with a fact-check phrase to consult the Meow-Ball; reply with a fact-check phrase or meow? to check the replied-to message.\n"
         "- Example: @meow --detect=fr --reply=ja miaou"
     ),
@@ -44,9 +45,6 @@ MESSAGES = {
     "bad_language": f"Unsupported language '{{language}}'. Supported languages: {SUPPORTED_LANGUAGE_LABELS}.",
     "api_language_error": "This MaaS server does not support language '{language}' yet. Update the API to a version with /languages support.",
     "outage": "MaaS is unavailable right now. Try again later.",
-    "strict_score": "Strict score: {score}",
-    "fuzzy_score": "Fuzzy score: {score}",
-    "embedded": 'Fuzzy: cat-sound-like ("{text}" covers {coverage} of letters)',
     "verdict_meow": "Verdict: Meow.",
     "verdict_like": "Verdict: Meow-like.",
     "verdict_no": "Verdict: Not meow.",
@@ -66,6 +64,9 @@ class Config(BaseProxyConfig):
         helper.copy("detect_language")
         helper.copy("response_language")
         helper.copy("room_languages")
+        helper.copy("strict_min_score")
+        helper.copy("fuzzy_min_score")
+        helper.copy("embedded_min_coverage")
 
 
 class Meow(Plugin):
@@ -81,6 +82,9 @@ class Meow(Plugin):
         self._global_response_language = self._valid_language(
             self.config.get("response_language", "auto"), "response"
         )
+        self._strict_min_score = self._valid_threshold("strict_min_score", 75)
+        self._fuzzy_min_score = self._valid_threshold("fuzzy_min_score", 55)
+        self._embedded_min_coverage = self._valid_threshold("embedded_min_coverage", 25)
         self._room_language_cache: dict[str, tuple[str, str]] = {}
         room_languages = self.config.get("room_languages", {}) or {}
         if not isinstance(room_languages, dict):
@@ -114,6 +118,39 @@ class Meow(Plugin):
             )
             return fallback
         return language
+
+    def _valid_threshold(self, setting: str, minimum: float) -> float:
+        value = self.config.get(setting, minimum)
+        try:
+            threshold = float(value) if not isinstance(value, bool) else float("nan")
+        except (TypeError, ValueError):
+            threshold = float("nan")
+        if not math.isfinite(threshold) or threshold > 100:
+            self.log.error("Invalid %s %r; using %s.", setting, value, minimum)
+            return minimum
+        if threshold < minimum:
+            self.log.warning(
+                "%s cannot be below the API minimum %s; using %s.",
+                setting, minimum, minimum,
+            )
+            return minimum
+        return threshold
+
+    @staticmethod
+    def _percentage(value: object) -> float:
+        return float(str(value).rstrip("%"))
+
+    def _matches_strict(self, data: dict) -> bool:
+        return bool(data.get("is_meow")) and (
+            self._percentage(data["meow_percentage"]) >= self._strict_min_score
+        )
+
+    def _matches_fuzzy(self, data: dict) -> bool:
+        if not data.get("is_meow_like"):
+            return False
+        if data.get("match_type") == "embedded":
+            return float(data["coverage_percentage"]) >= self._embedded_min_coverage
+        return self._percentage(data["meow_percentage"]) >= self._fuzzy_min_score
 
     def _resolve_languages(self, room_id: str) -> tuple[str, str]:
         return self._room_language_cache.get(
@@ -151,7 +188,7 @@ class Meow(Plugin):
         data = await self._maas_get_json(
             maas_url, "/ismeow", {"text": text, "lang": language}
         )
-        return bool(data.get("is_meow"))
+        return self._matches_strict(data)
 
     def _extract_phrase_subject(self, stripped: str) -> str | None:
         match = MEOW_BALL_PHRASE.search(stripped)
@@ -246,20 +283,28 @@ class Meow(Plugin):
         return remaining, options, None
 
     def _format_analysis(self, strict: dict, fuzzy: dict) -> str:
-        lines = [MESSAGES["strict_score"].format(score=strict["meow_percentage"])]
-        if fuzzy.get("match_type") == "embedded" and fuzzy.get("matched_text"):
-            lines.append(
-                MESSAGES["embedded"].format(
-                    text=fuzzy["matched_text"],
-                    coverage=f"{float(fuzzy['coverage_percentage']):.1f}%",
-                )
-            )
-        else:
-            lines.append(MESSAGES["fuzzy_score"].format(score=fuzzy["meow_percentage"]))
+        def detail(data: dict) -> str:
+            language = data.get("language")
+            closest = data.get("closest_language")
+            if language == "auto" and closest:
+                parts = [f"closest language: {closest}"]
+            else:
+                parts = [f"language: {language or 'unknown'}"]
+            parts.append(f"family: {data.get('family', 'unknown')}")
+            parts.append(f"match: {data.get('match_type', 'none')}")
+            if data.get("matched_text"):
+                parts.append(f"text: {data['matched_text']!r}")
+            if data.get("match_type") == "embedded" and data.get("coverage_percentage") is not None:
+                parts.append(f"coverage: {float(data['coverage_percentage']):.1f}%")
+            return ", ".join(parts)
 
-        if strict.get("is_meow"):
+        lines = [
+            f"Strict score: {strict['meow_percentage']} ({detail(strict)})",
+            f"Fuzzy score: {fuzzy['meow_percentage']} ({detail(fuzzy)})",
+        ]
+        if self._matches_strict(strict):
             lines.append(MESSAGES["verdict_meow"])
-        elif fuzzy.get("is_meow_like"):
+        elif self._matches_fuzzy(fuzzy):
             lines.append(MESSAGES["verdict_like"])
         else:
             lines.append(MESSAGES["verdict_no"])
@@ -405,7 +450,7 @@ class Meow(Plugin):
                     "/meowlike",
                     {"text": body, "lang": "auto"},
                 )
-                if data_fuzzy.get("is_meow_like"):
+                if self._matches_fuzzy(data_fuzzy):
                     detected_language = str(data_fuzzy.get("language", "")).lower()
                     if detected_language not in SUPPORTED_LANGUAGES:
                         raise UnsupportedLanguageError(detected_language or "auto")

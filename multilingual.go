@@ -75,9 +75,15 @@ func buildLanguageRegistry() (map[string]*languagePack, error) {
 	}
 	jaForms := []vocalizationForm{
 		{family: familyNya, text: "にゃ", anchor: "に", embeddedOK: true},
+		{family: familyNya, text: "にゃん", anchor: "に", embeddedOK: true},
 		{family: familyNya, text: "にゃー", anchor: "に", embeddedOK: true},
+		{family: familyNya, text: "にゃーん", anchor: "に", embeddedOK: true},
+		{family: familyNya, text: "にゃーお", anchor: "に", embeddedOK: true},
 		{family: familyNya, text: "にゃあ", anchor: "に", embeddedOK: true},
+		{family: familyNya, text: "ニャン", anchor: "ニ", embeddedOK: true},
+		{family: familyNya, text: "ニャーン", anchor: "ニ", embeddedOK: true},
 		{family: familyNya, text: "ニャー", anchor: "ニ", embeddedOK: true},
+		{family: familyNya, text: "ニャーオ", anchor: "ニ", embeddedOK: true},
 		{family: familyNya, text: "nya", anchor: "ny", embeddedOK: true},
 	}
 	trForms := []vocalizationForm{
@@ -111,6 +117,8 @@ func buildLanguageRegistry() (map[string]*languagePack, error) {
 		{family: familyMeow, text: "meau", anchor: "m", embeddedOK: true},
 		{family: familyMeow, text: "miáu", anchor: "m", embeddedOK: true},
 		{family: familyMeow, text: "marramiau", anchor: "m", embeddedOK: true},
+		{family: familyMeow, text: "marramáu", anchor: "m", exactOnly: true, embeddedOK: true},
+		{family: familyMeow, text: "marramau", anchor: "m", exactOnly: true, embeddedOK: true},
 		{family: familyPrrr, text: "rrr", anchor: "r", exactOnly: true, embeddedOK: true},
 	}
 	nlForms := []vocalizationForm{
@@ -628,13 +636,6 @@ func requireGET(w http.ResponseWriter, r *http.Request) bool {
 	return false
 }
 
-func servedFamily(analysis vocalizationAnalysis, fuzzy bool) vocalizationFamily {
-	if fuzzy && analysis.isFuzzy || !fuzzy && analysis.isStrict {
-		return analysis.family
-	}
-	return "unknown"
-}
-
 func serveGenerateMeow(w http.ResponseWriter, r *http.Request) {
 	if !requireGET(w, r) {
 		return
@@ -668,6 +669,7 @@ func serveDetectMeow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	language := ""
+	var closestLanguage interface{}
 	var analysis vocalizationAnalysis
 	if automatic {
 		var matched bool
@@ -676,15 +678,22 @@ func serveDetectMeow(w http.ResponseWriter, r *http.Request) {
 		if matched {
 			language = pack.Tag
 		}
+		if pack != nil {
+			closestLanguage = pack.Tag
+		}
 	} else {
 		analysis = analyzeForLanguage(text, pack)
 		language = pack.Tag
+		if analysis.family != "unknown" {
+			closestLanguage = pack.Tag
+		}
 	}
 	writeAPIJSON(w, http.StatusOK, map[string]interface{}{
 		"input": text, "squeezed_form": analysis.normalized.squeezed,
 		"is_meow": analysis.isStrict, "meow_percentage": fmt.Sprintf("%.1f%%", analysis.strictScore),
-		"family": string(servedFamily(analysis, false)), "match_type": analysis.matchType,
-		"language": language, "detection_time": time.Since(start).String(),
+		"family": string(analysis.family), "match_type": analysis.matchType,
+		"language": language, "closest_language": closestLanguage,
+		"detection_time": time.Since(start).String(),
 	})
 }
 
@@ -704,6 +713,7 @@ func serveDetectMeowLike(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	language := ""
+	var closestLanguage interface{}
 	var analysis vocalizationAnalysis
 	if automatic {
 		var matched bool
@@ -712,12 +722,18 @@ func serveDetectMeowLike(w http.ResponseWriter, r *http.Request) {
 		if matched {
 			language = pack.Tag
 		}
+		if pack != nil {
+			closestLanguage = pack.Tag
+		}
 	} else {
 		analysis = analyzeForLanguage(text, pack)
 		if !analysis.isFuzzy {
 			analysis = applyEmbeddedAnalysis(text, pack, analysis)
 		}
 		language = pack.Tag
+		if analysis.family != "unknown" {
+			closestLanguage = pack.Tag
+		}
 	}
 	coverage := interface{}(nil)
 	matchedText := interface{}(nil)
@@ -730,14 +746,17 @@ func serveDetectMeowLike(w http.ResponseWriter, r *http.Request) {
 	writeAPIJSON(w, http.StatusOK, map[string]interface{}{
 		"input": text, "squeezed_form": analysis.normalized.squeezed,
 		"is_meow_like": analysis.isFuzzy, "meow_percentage": fmt.Sprintf("%.1f%%", analysis.fuzzyScore),
-		"family": string(servedFamily(analysis, true)), "match_type": analysis.matchType,
-		"language": language, "matched_text": matchedText, "coverage_percentage": coverage,
+		"family": string(analysis.family), "match_type": analysis.matchType,
+		"language": language, "closest_language": closestLanguage,
+		"matched_text": matchedText, "coverage_percentage": coverage,
 		"detection_time": time.Since(start).String(),
 	})
 }
 
 func analyzeAcrossLanguagePacks(text string, embedded bool) (vocalizationAnalysis, *languagePack, bool) {
-	fallback := analyzeForLanguage(text, languagePacks["en"])
+	var closestAnalysis vocalizationAnalysis
+	var closestPack *languagePack
+	closestScore := 0.0
 	var matchedAnalysis vocalizationAnalysis
 	var matchedPack *languagePack
 	bestScore := -1.0
@@ -747,27 +766,30 @@ func analyzeAcrossLanguagePacks(text string, embedded bool) (vocalizationAnalysi
 		if embedded && !analysis.isFuzzy {
 			analysis = applyEmbeddedAnalysis(text, pack, analysis)
 		}
+		score := analysis.strictScore
+		if embedded {
+			score = analysis.fuzzyScore
+		}
+		if score > closestScore {
+			closestAnalysis, closestPack, closestScore = analysis, pack, score
+		}
 		matched := analysis.isFuzzy
 		if !embedded {
 			matched = analysis.isStrict
 		}
 		if matched {
-			score := analysis.strictScore
-			if embedded {
-				score = analysis.fuzzyScore
-			}
 			if score > bestScore {
 				matchedAnalysis, matchedPack, bestScore = analysis, pack, score
 			}
-		}
-		if tag == "en" {
-			fallback = analysis
 		}
 	}
 	if matchedPack != nil {
 		return matchedAnalysis, matchedPack, true
 	}
-	return fallback, nil, false
+	if closestPack != nil {
+		return closestAnalysis, closestPack, false
+	}
+	return analyzeForLanguage(text, languagePacks["en"]), nil, false
 }
 
 func languagesHandler(w http.ResponseWriter, r *http.Request) {
@@ -866,7 +888,7 @@ func bestEmbeddedToken(token wordToken, pack *languagePack) (embeddedCandidate, 
 	if _, denied := pack.embeddedDenylist[string(canonical)]; denied {
 		return embeddedCandidate{}, false
 	}
-	if pack.Tag == "en" && isMeowEcho(string(canonical)) {
+	if pack.Tag == "en" && (isMeowEcho(string(canonical)) || isMixedMeow(string(canonical))) {
 		return embeddedCandidate{family: familyMeow, text: token.text, letters: token.letterCount, offset: token.start}, true
 	}
 	if len(canonical) > pack.longestForm+1 {

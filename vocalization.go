@@ -40,6 +40,7 @@ var vocalizationForms = []vocalizationForm{
 	{family: familyMeow, text: "mew", embeddedOK: true},
 	{family: familyMeow, text: "miao", embeddedOK: true},
 	{family: familyMeow, text: "miau", embeddedOK: true},
+	{family: familyMeow, text: "miaow", exactOnly: true, embeddedOK: true},
 	{family: familyMeow, text: "rawr", exactOnly: true, embeddedOK: true},
 	{family: familyNya, text: "nya", embeddedOK: true},
 	{family: familyNya, text: "nyan", embeddedOK: true},
@@ -472,8 +473,49 @@ func analyzeVocalization(text string) vocalizationAnalysis {
 			analysis.matchType = "exact"
 		}
 	}
+	if !analysis.isStrict && !analysis.isFuzzy && normalized.unknownCount == 0 && isMixedMeow(normalized.squeezed) {
+		analysis.family = familyMeow
+		analysis.matchType = "mixed"
+		analysis.fuzzyScore = 85
+		analysis.isFuzzy = true
+	}
 
 	return analysis
+}
+
+func isMixedMeow(squeezed string) bool {
+	for _, purr := range []string{"mrrp", "mrp", "prr", "purr"} {
+		if strings.HasPrefix(squeezed, purr) && isLooseMeowSyllable(strings.TrimPrefix(squeezed, purr)) ||
+			strings.HasSuffix(squeezed, purr) && isLooseMeowSyllable(strings.TrimSuffix(squeezed, purr)) {
+			return true
+		}
+	}
+	return strings.HasPrefix(squeezed, "mrr") && isLooseMeowTail(strings.TrimPrefix(squeezed, "mrr"))
+}
+
+func isLooseMeowSyllable(syllable string) bool {
+	if len(syllable) < 4 || len(syllable) > 10 || syllable[0] != 'm' {
+		return false
+	}
+	return isLooseMeowTail(syllable[1:])
+}
+
+func isLooseMeowTail(tail string) bool {
+	if len(tail) < 3 || len(tail) > 9 || !strings.ContainsRune("aeiou", rune(tail[0])) {
+		return false
+	}
+	vowels, wCount := 0, 0
+	for i := 0; i < len(tail); i++ {
+		switch tail[i] {
+		case 'a', 'e', 'i', 'o', 'u':
+			vowels++
+		case 'w':
+			wCount++
+		default:
+			return false
+		}
+	}
+	return vowels >= 2 && wCount >= 1 && wCount <= 3
 }
 
 func isMeowEcho(squeezed string) bool {

@@ -42,6 +42,9 @@ class BotLanguageTests(unittest.TestCase):
         }
         self.bot._global_detect_language = "fr"
         self.bot._global_response_language = "en"
+        self.bot._strict_min_score = 75
+        self.bot._fuzzy_min_score = 55
+        self.bot._embedded_min_coverage = 25
         self.bot._room_language_cache = {
             "!room:example.org": ("fr", "ja"),
         }
@@ -59,13 +62,18 @@ class BotLanguageTests(unittest.TestCase):
             language = (params or {}).get("lang", "en")
             if path == "/ismeow":
                 text = (params or {}).get("text", "")
+                is_meow = text in {"miaou", "にゃー", "meow"}
                 return {
                     "language": language,
-                    "is_meow": text in {"miaou", "にゃー"},
-                    "meow_percentage": "100.0%" if text in {"miaou", "にゃー"} else "0.0%",
+                    "closest_language": language,
+                    "family": "meow",
+                    "match_type": "exact" if is_meow else "none",
+                    "is_meow": is_meow,
+                    "meow_percentage": "100.0%" if is_meow else "0.0%",
                 }
             if path == "/meowlike":
                 text = (params or {}).get("text", "")
+                embedded = text != "meow" and text.endswith("meow")
                 if language == "auto":
                     language = {
                         "miaou": "fr",
@@ -74,16 +82,18 @@ class BotLanguageTests(unittest.TestCase):
                         "няв": "uk",
                         "喵喵": "zh-Hans",
                         "meow": "en",
-                    }.get(text, "en" if text.endswith("meow") else "auto")
+                    }.get(text, "en" if embedded else "auto")
                 return {
                     "language": language,
+                    "closest_language": language,
+                    "family": "meow",
                     "is_meow_like": text in {
                         "miaou", "にゃー", "miyav", "мяу", "няв", "喵喵", "meow"
-                    } or text.endswith("meow"),
-                    "meow_percentage": "30.8%",
-                    "match_type": "embedded" if text.endswith("meow") else "exact",
-                    "matched_text": "meow" if text.endswith("meow") else None,
-                    "coverage_percentage": 30.8 if text.endswith("meow") else 100,
+                    } or embedded,
+                    "meow_percentage": "30.8%" if embedded else "100.0%",
+                    "match_type": "embedded" if embedded else "exact",
+                    "matched_text": "meow" if embedded else None,
+                    "coverage_percentage": 30.8 if embedded else 100,
                 }
             if path == "/meow":
                 return {"language": language, "meow": "にゃー" if language == "ja" else "miaou"}
@@ -194,16 +204,57 @@ class BotLanguageTests(unittest.TestCase):
         )
 
     def test_embedded_analysis_uses_english_diagnostic(self):
-        strict = {"meow_percentage": "0.0%", "is_meow": False}
+        strict = {"meow_percentage": "0.0%", "is_meow": False, "language": "auto"}
         fuzzy = {
             "meow_percentage": "30.8%",
             "is_meow_like": True,
             "match_type": "embedded",
             "matched_text": "meow",
             "coverage_percentage": 30.8,
+            "language": "en",
+            "family": "meow",
         }
         text = self.bot._format_analysis(strict, fuzzy)
-        self.assertIn('Fuzzy: cat-sound-like ("meow" covers 30.8% of letters)', text)
+        self.assertIn("Fuzzy score: 30.8%", text)
+        self.assertIn("language: en, family: meow, match: embedded", text)
+        self.assertIn("text: 'meow', coverage: 30.8%", text)
+        self.assertIn("Verdict: Meow-like.", text)
+
+    def test_configurable_thresholds_control_verdicts_and_passive_replies(self):
+        import asyncio
+
+        strict = {
+            "is_meow": True, "meow_percentage": "80.0%", "language": "auto",
+            "closest_language": "en", "family": "meow", "match_type": "typo",
+        }
+        fuzzy = {
+            "is_meow_like": True, "meow_percentage": "60.0%",
+            "language": "auto", "closest_language": "en", "family": "meow",
+            "match_type": "typo",
+        }
+        self.bot._strict_min_score = 85
+        self.bot._fuzzy_min_score = 65
+        self.assertIn("closest language: en", self.bot._format_analysis(strict, fuzzy))
+        self.assertIn("Verdict: Not meow.", self.bot._format_analysis(strict, fuzzy))
+
+        self.bot._embedded_min_coverage = 35
+        evt = self.event("You're cute meow")
+        asyncio.run(meow_module.Meow.handle_message(self.bot, evt))
+        evt.reply.assert_not_awaited()
+
+        embedded = {
+            "is_meow_like": True, "meow_percentage": "30.8%",
+            "match_type": "embedded", "coverage_percentage": 30.8,
+        }
+        self.assertFalse(self.bot._matches_fuzzy(embedded))
+
+    def test_threshold_config_uses_api_floors(self):
+        self.bot.config.update(
+            strict_min_score=10, fuzzy_min_score="90", embedded_min_coverage="no"
+        )
+        self.assertEqual(self.bot._valid_threshold("strict_min_score", 75), 75)
+        self.assertEqual(self.bot._valid_threshold("fuzzy_min_score", 55), 90)
+        self.assertEqual(self.bot._valid_threshold("embedded_min_coverage", 25), 25)
 
     def test_ping_detects_in_french_and_keeps_analysis_english(self):
         async def run():

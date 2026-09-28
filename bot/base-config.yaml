@@ -5,3 +5,6 @@ target_rooms:
 detect_language: "auto"
 response_language: "auto"
 room_languages: {}
+strict_min_score: 75
+fuzzy_min_score: 55
+embedded_min_coverage: 25

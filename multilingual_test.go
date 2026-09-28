@@ -33,10 +33,16 @@ func TestLanguageWholeInputRecognition(t *testing.T) {
 		fuzzy    bool
 	}{
 		{name: "legacy English", language: "en", input: "meow", strict: true, fuzzy: true},
+		{name: "British English miaow", language: "en", input: "miaow", strict: true, fuzzy: true},
 		{name: "English echoed meow", language: "en", input: "meeeeooowowwwwww", strict: true, fuzzy: true},
 		{name: "legacy punctuation", language: "en", input: "m.e.e.o.w", strict: true, fuzzy: true},
 		{name: "French miaou", language: "fr", input: "miaou", strict: true, fuzzy: true},
 		{name: "Japanese hiragana", language: "ja", input: "にゃー", strict: true, fuzzy: true},
+		{name: "Japanese extended nyan", language: "ja", input: "にゃーん", strict: true, fuzzy: true},
+		{name: "Japanese nyao", language: "ja", input: "ニャーオ", strict: true, fuzzy: true},
+		{name: "Japanese nyan", language: "ja", input: "にゃん", strict: true, fuzzy: true},
+		{name: "Japanese katakana nyan", language: "ja", input: "ニャン", strict: true, fuzzy: true},
+		{name: "Japanese half-width nyan", language: "ja", input: "ﾆｬﾝ", strict: true, fuzzy: true},
 		{name: "Japanese width folding", language: "ja", input: "ﾆｬｰ", strict: true, fuzzy: true},
 		{name: "Turkish meow", language: "tr", input: "miyav", strict: true, fuzzy: true},
 		{name: "Turkish purr", language: "tr", input: "mır-mır", strict: true, fuzzy: true},
@@ -48,6 +54,7 @@ func TestLanguageWholeInputRecognition(t *testing.T) {
 		{name: "Traditional Chinese repeated form", language: "zh-hant", input: "喵喵", strict: true, fuzzy: true},
 		{name: "Spanish historical spelling", language: "es", input: "meau", strict: true, fuzzy: true},
 		{name: "Spanish compound", language: "es", input: "marramiau", strict: true, fuzzy: true},
+		{name: "Spanish marramau", language: "es", input: "marramáu", strict: true, fuzzy: true},
 		{name: "Spanish purr", language: "es", input: "rrr", strict: true, fuzzy: true},
 		{name: "Dutch miauw", language: "nl", input: "miauw", strict: true, fuzzy: true},
 		{name: "Dutch mauw", language: "nl", input: "mauw", strict: true, fuzzy: true},
@@ -130,6 +137,8 @@ func TestEmbeddedMeowLikeCoverageAndBoundaries(t *testing.T) {
 	}{
 		{input: "You’re cute meow", want: true},
 		{input: "You’re cute meeeeooowowwwwww", want: true},
+		{input: "That was mrrpmaaowo", want: true},
+		{input: "That was mrrawoww", want: true},
 		{input: "You are cute meow", want: true},
 		{input: "meow meow you", want: true},
 		{input: "This is a long unrelated sentence with a single meow at the very end", want: false},
@@ -137,6 +146,8 @@ func TestEmbeddedMeowLikeCoverageAndBoundaries(t *testing.T) {
 		{input: "meows", want: true},
 		{input: "purrfect", want: true},
 		{input: "somewhere", want: false},
+		{input: "purrpose", want: false},
+		{input: "mrproper", want: false},
 		{input: "You're cute now", want: false},
 		{input: "cute \x60meow\x60", want: false},
 		{input: "cute https://example.com/meow", want: false},
@@ -194,6 +205,23 @@ func TestEnglishWordVariantsAreFuzzyOnly(t *testing.T) {
 	}
 }
 
+func TestMixedPurrMeowIsFuzzyOnly(t *testing.T) {
+	for _, input := range []string{"mrrpmaaowo", "mrrpmeow", "purrmaow", "maowmrrp", "mrrawoww"} {
+		strict := httptest.NewRecorder()
+		fuzzy := httptest.NewRecorder()
+		requestURL := "?text=" + url.QueryEscape(input) + "&lang=auto"
+		detectMeow(strict, httptest.NewRequest(http.MethodGet, "/ismeow"+requestURL, nil))
+		detectMeowLike(fuzzy, httptest.NewRequest(http.MethodGet, "/meowlike"+requestURL, nil))
+		if decodeJSONResponse(t, strict)["is_meow"] != false {
+			t.Errorf("%q passed strict detection", input)
+		}
+		response := decodeJSONResponse(t, fuzzy)
+		if response["is_meow_like"] != true || response["language"] != "en" {
+			t.Errorf("%q missed fuzzy English detection: %#v", input, response)
+		}
+	}
+}
+
 func decodeJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder) map[string]interface{} {
 	t.Helper()
 	var response map[string]interface{}
@@ -234,13 +262,17 @@ func TestAutomaticDetectionFindsLanguageAndKeepsAmbiguousFormsStable(t *testing.
 		input    string
 		language string
 	}{
+		{input: "miaow", language: "en"},
 		{input: "miaou", language: "fr"},
 		{input: "にゃー", language: "ja"},
+		{input: "ニャーオ", language: "ja"},
+		{input: "にゃん", language: "ja"},
 		{input: "miyav", language: "tr"},
 		{input: "мяу", language: "ru"},
 		{input: "няв", language: "uk"},
 		{input: "喵喵", language: "zh-Hans"},
 		{input: "marramiau", language: "es"},
+		{input: "marramáu", language: "es"},
 		{input: "miauw", language: "nl"},
 		{input: "maunz", language: "de"},
 		{input: "մյաու", language: "hy"},
@@ -327,6 +359,26 @@ func TestDetectionHTTPFieldsAndLimits(t *testing.T) {
 	detectMeow(recorder, httptest.NewRequest(http.MethodPost, "/ismeow?text=meow", nil))
 	if recorder.Code != http.StatusMethodNotAllowed || recorder.Header().Get("Allow") != http.MethodGet {
 		t.Fatalf("unexpected method handling: status=%d allow=%q", recorder.Code, recorder.Header().Get("Allow"))
+	}
+}
+
+func TestRejectedCandidateKeepsClosestClassification(t *testing.T) {
+	for _, endpoint := range []struct {
+		path string
+		fn http.HandlerFunc
+		verdict string
+	}{
+		{path: "/ismeow", fn: detectMeow, verdict: "is_meow"},
+		{path: "/meowlike", fn: detectMeowLike, verdict: "is_meow_like"},
+	} {
+		recorder := httptest.NewRecorder()
+		endpoint.fn(recorder, httptest.NewRequest(http.MethodGet, endpoint.path+"?text=m.e.o.w.12&lang=auto", nil))
+		response := decodeJSONResponse(t, recorder)
+		if response[endpoint.verdict] != false || response["language"] != "auto" ||
+			response["closest_language"] != "en" || response["family"] != "meow" ||
+			response["match_type"] != "typo" || response["meow_percentage"] != "30.0%" {
+			t.Errorf("%s lost its closest candidate: %#v", endpoint.path, response)
+		}
 	}
 }
 
